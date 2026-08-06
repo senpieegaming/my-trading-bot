@@ -13,7 +13,7 @@ from telegram.ext import (
 
 # ⚠️ PALITAN ANG 2 BAGAY NA ITO:
 TOKEN = "8743360999:AAGoyTpnZNtcOa414MmACkzesVUYkGxELh4"
-ALLOWED_USER_ID = 123456789  # Ilagay ang Telegram User ID mo mula kay @userinfobot
+ALLOWED_USER_ID = 8434566946  # Ilagay ang Telegram User ID mo mula kay @userinfobot
 
 # 🗄️ Storage para sa Signal History ng Bawat User
 USER_HISTORY = {}
