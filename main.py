@@ -134,7 +134,7 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown",
     )
 
-  # Generate Signal Output (Fix for Request Another Signal)
+  # Generate Signal Output
   elif data.startswith("time_") or data == "regen_signal":
     if data.startswith("time_"):
       context.user_data["time"] = data.split("_")[1]
@@ -143,7 +143,6 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pair = context.user_data.get("pair", "EUR/USD OTC")
     model = context.user_data.get("model", "Groq Llama 3.3")
 
-    # Step A: Pakita muna ang Loading Screen
     scan_percent = random.randint(82, 98)
     await query.edit_message_text(
         f"⏳ *{model} Scanning Live Market...*\n"
@@ -153,10 +152,8 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown",
     )
 
-    # Step B: Mag-pause ng 1 second para maramdaman ang scanning process
     await asyncio.sleep(1)
 
-    # Step C: Generate Dynamic Trading Values para laging bagong text!
     rec = random.choice(["BUY 🟢", "SELL 🔴"])
     if "BUY" in rec:
       rsi_val = random.randint(19, 32)
@@ -208,7 +205,7 @@ def main():
   app = Application.builder().token(TOKEN).build()
   app.add_handler(CommandHandler("start", start))
   app.add_handler(CallbackQueryHandler(button_click))
-  print("Fixed Bot is running... Try clicking Request Another Signal!")
+  print("Railway Bot running with Gemini & Groq AI...")
   app.run_polling()
 
 
