@@ -62,22 +62,6 @@ OTC_PAIRS = [
     ["EUR/GBP OTC", "NZD/USD OTC"],
 ]
 
-BULLISH_PATTERNS = [
-    "Bullish Engulfing 📈",
-    "Hammer / Pin Bar 🔨",
-    "Morning Star 🌅",
-    "Bullish Harami 🐣",
-    "Double Bottom Rejection 📉📈",
-]
-
-BEARISH_PATTERNS = [
-    "Bearish Engulfing 📉",
-    "Shooting Star 🌠",
-    "Evening Star 🌇",
-    "Bearish Harami 🥀",
-    "Double Top Rejection 📈📉",
-]
-
 
 # 🗓️ SMART WEEKEND DETECTOR
 def get_active_pairs_pool():
@@ -345,7 +329,8 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
           ],
           [
               InlineKeyboardButton(
-                  "🔄 Request Another Signal", callback_data="regen_auto_scan"
+                  "🔄 Request Another Signal",
+                  callback_data="regen_auto_scan",
               )
           ],
           [
@@ -361,7 +346,7 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
       except Exception as e:
         print(f"Markup update error: {e}")
 
-  # PURE TEXT SIGNAL GENERATOR WITH RED 🔴 / GREEN 🟢 EMOJIS
+  # SIGNAL GENERATOR
   elif (
       data == "auto_scan_pair"
       or data == "regen_auto_scan"
@@ -401,15 +386,12 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     live_price, rsi_val, macd_status = await fetch_deriv_live_data(pair)
     entry_time, exit_time = get_ph_timing(time_val)
 
-    # RED 🔴 / GREEN 🟢 EMOJI DIRECTION SELECTION
     if rsi_val < 42:
       recommendation = "BUY 🟢 (UP)"
-      pattern = random.choice(BULLISH_PATTERNS)
       key_level = "At Live Support Zone 🟢"
       rsi_state = f"Oversold ({rsi_val}) 🟢"
     else:
       recommendation = "SELL 🔴 (DOWN)"
-      pattern = random.choice(BEARISH_PATTERNS)
       key_level = "At Live Resistance Zone 🔴"
       rsi_state = f"Overbought ({rsi_val}) 🔴"
 
@@ -430,10 +412,16 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "result": "PENDING ⏳",
     })
 
+    # MAY BAGONG "⏩ SKIP CLOSED PAIR" BUTTON DITO:
     bottom_buttons = InlineKeyboardMarkup([
         [
             InlineKeyboardButton("✅ WIN (Profit)", callback_data="mark_win"),
             InlineKeyboardButton("❌ LOSS (Lose)", callback_data="mark_loss"),
+        ],
+        [
+            InlineKeyboardButton(
+                "⏩ Skip Closed Pair (Rescan)", callback_data="regen_auto_scan"
+            )
         ],
         [
             InlineKeyboardButton(
@@ -464,7 +452,6 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🏁 *EXIT TIME:*  `{exit_time}`
 
 📊 *Deriv Live Technical Analysis:*
-• Candlestick: *{pattern}*
 • Key Level: *{key_level}*
 • Live RSI (14): *{rsi_state}*
 • MACD Status: *{macd_status}*
@@ -472,6 +459,7 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
 💪 *Win Confidence Score:* *{strength_val}% (High Probability)*
 ━━━━━━━━━━━━━━━━━━━
 🔥 *RECOMMENDATION:* *{recommendation}*
+💡 *Note:* If this pair is temporarily closed on your broker, tap *⏩ Skip Closed Pair* below!
 """
     await query.edit_message_text(
         final_signal, reply_markup=bottom_buttons, parse_mode="Markdown"
@@ -549,7 +537,7 @@ def main():
   app = Application.builder().token(TELEGRAM_TOKEN).build()
   app.add_handler(CommandHandler("start", start))
   app.add_handler(CallbackQueryHandler(button_click))
-  print("Pure Text Deriv Live WebSocket Bot is online...")
+  print("Skip-Closed-Pair Pro Trading Bot is online...")
   app.run_polling()
 
 
