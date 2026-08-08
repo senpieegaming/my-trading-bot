@@ -14,7 +14,7 @@ from telegram.ext import (
     ContextTypes,
 )
 
-# 🔑 CONFIGURATION:
+# 🔑 CONFIGURATION (PRE-CONFIGURED WITH YOUR TOKENS):
 TELEGRAM_TOKEN = "8743360999:AAGoyTpnZNtcOa414MmACkzesVUYkGxELh4"
 ALLOWED_USER_ID = 8434566946
 DERIV_API_TOKEN = (
@@ -22,11 +22,11 @@ DERIV_API_TOKEN = (
 )
 DERIV_APP_ID = "1089"
 
-BUY_IMAGE_URL = "https://i.postimg.cc/8P2zP8Xz/BUY.png"
-SELL_IMAGE_URL = "https://i.postimg.cc/pT3wLh5J/SELL.png"
+# 🖼️ ANG MISMONG CUSTOM IMGUR IMAGE LINKS MO:
+BUY_IMAGE_URL = "https://i.imgur.com/AzYhUAv.png"
+SELL_IMAGE_URL = "https://i.imgur.com/i1DDtZt.png"
 
 USER_HISTORY = {}
-USER_SETTINGS = {}
 
 SYMBOL_MAP = {
     "EUR/USD": "frxEURUSD",
@@ -67,11 +67,10 @@ OTC_PAIRS = [
 ]
 
 
-# 🗓️ SMART WEEKEND DETECTOR (Para Tanging OTC lang ang lalabas pag Weekend!)
+# 🗓️ SMART WEEKEND DETECTOR
 def get_active_pairs_pool():
   now_ph = datetime.datetime.now(ZoneInfo("Asia/Manila"))
-  # 5 = Saturday, 6 = Sunday
-  if now_ph.weekday() >= 5:
+  if now_ph.weekday() >= 5:  # Saturday or Sunday
     return [
         "EUR/USD OTC",
         "GBP/USD OTC",
@@ -113,12 +112,6 @@ def calculate_rsi(closes, period=14):
     return 100.0
   rs = avg_gain / avg_loss
   return round(100.0 - (100.0 / (1.0 + rs)), 2)
-
-
-def calculate_sma(prices, period=20):
-  if len(prices) < period:
-    return prices[-1]
-  return sum(prices[-period:]) / period
 
 
 def calculate_ema(prices, period):
@@ -170,13 +163,12 @@ async def fetch_deriv_live_data(symbol_name, granularity=60):
         closes = [c["close"] for c in data["candles"]]
         live_price = closes[-1]
         rsi = calculate_rsi(closes)
-        sma20 = calculate_sma(closes, 20)
         macd_status, macd_val = calculate_macd(closes)
-        return live_price, rsi, sma20, macd_status
+        return live_price, rsi, macd_status
   except Exception as e:
     print(f"Deriv WS Exception for {symbol_name}: {e}")
 
-  return None, round(random.uniform(22.0, 78.0), 2), 1.0850, "Selling pressure"
+  return None, round(random.uniform(22.0, 78.0), 2), "Selling pressure"
 
 
 def get_ph_timing(timeframe_str):
@@ -206,18 +198,7 @@ async def show_main_menu(update_or_query, is_query=False):
   keyboard = [
       [
           InlineKeyboardButton(
-              "🎯 HIGH-ACCURACY PRO SCANNER", callback_data="high_accuracy_scan"
-          )
-      ],
-      [
-          InlineKeyboardButton(
               "🔥 AUTO-SCAN BEST PAIR", callback_data="auto_scan_pair"
-          )
-      ],
-      [
-          InlineKeyboardButton(
-              "⚙️ ACCURACY FILTERS & SETTINGS",
-              callback_data="accuracy_settings",
           )
       ],
       [
@@ -233,12 +214,17 @@ async def show_main_menu(update_or_query, is_query=False):
       ],
       [
           InlineKeyboardButton(
+              "Groq AI (Llama 3.3) 🧠", callback_data="model_Groq Llama 3.3"
+          )
+      ],
+      [
+          InlineKeyboardButton(
               "📜 View History & Win Rate", callback_data="view_history"
           )
       ],
   ]
   reply_markup = InlineKeyboardMarkup(keyboard)
-  text = "Select AI Engine or High-Accuracy Pro Scanner:"
+  text = "Select AI Engine or Auto-Scan Best Pair:"
 
   if is_query:
     await update_or_query.edit_message_text(
@@ -270,14 +256,6 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
   user_id = update.effective_user.id
   chat_id = query.message.chat_id
 
-  if user_id not in USER_SETTINGS:
-    USER_SETTINGS[user_id] = {
-        "sma_filter": True,
-        "strict_rsi": True,
-        "wick_confirm": True,
-        "mtg_guide": True,
-    }
-
   if data == "go_main_menu":
     try:
       await query.message.delete()
@@ -285,23 +263,11 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
       pass
     await context.bot.send_message(
         chat_id=chat_id,
-        text="Select AI Engine or High-Accuracy Pro Scanner:",
+        text="Select AI Engine or Auto-Scan Best Pair:",
         reply_markup=InlineKeyboardMarkup([
             [
                 InlineKeyboardButton(
-                    "🎯 HIGH-ACCURACY PRO SCANNER",
-                    callback_data="high_accuracy_scan",
-                )
-            ],
-            [
-                InlineKeyboardButton(
                     "🔥 AUTO-SCAN BEST PAIR", callback_data="auto_scan_pair"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "⚙️ ACCURACY FILTERS & SETTINGS",
-                    callback_data="accuracy_settings",
                 )
             ],
             [
@@ -318,65 +284,18 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ],
             [
                 InlineKeyboardButton(
+                    "Groq AI (Llama 3.3) 🧠",
+                    callback_data="model_Groq Llama 3.3",
+                )
+            ],
+            [
+                InlineKeyboardButton(
                     "📜 View History & Win Rate", callback_data="view_history"
                 )
             ],
         ]),
     )
 
-  # SETTINGS MENU
-  elif data == "accuracy_settings":
-    st = USER_SETTINGS[user_id]
-    settings_text = (
-        "⚙️ *HIGH-ACCURACY PRO FILTERS & SETTINGS*\n"
-        "━━━━━━━━━━━━━━━━━━━\n\n"
-        f"🎯 *1. 20 SMA Trend Filter:* {'[ ACTIVE 🟢 ]' if st['sma_filter'] else '[ OFF 🔴 ]'}\n"
-        f"🔥 *2. Strict RSI Threshold (35/65):* {'[ ACTIVE 🟢 ]' if st['strict_rsi'] else '[ OFF 🔴 ]'}\n"
-        f"🕯️ *3. Wick Reversal Confirmation:* {'[ ACTIVE 🟢 ]' if st['wick_confirm'] else '[ OFF 🔴 ]'}\n"
-        f"🛡️ *4. 1-Step MTG Strategy Guide:* {'[ ENABLED 🟢 ]' if st['mtg_guide'] else '[ OFF 🔴 ]'}\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
-    )
-    settings_buttons = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                "🎯 Toggle 20 SMA Filter", callback_data="toggle_sma"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "🔥 Toggle Strict RSI (35/65)", callback_data="toggle_rsi"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "🕯️ Toggle Wick Confirmation", callback_data="toggle_wick"
-            )
-        ],
-        [InlineKeyboardButton("🏠 Main Menu", callback_data="go_main_menu")],
-    ])
-    await query.edit_message_text(
-        settings_text, reply_markup=settings_buttons, parse_mode="Markdown"
-    )
-
-  elif data == "toggle_sma":
-    USER_SETTINGS[user_id]["sma_filter"] = not USER_SETTINGS[user_id][
-        "sma_filter"
-    ]
-    await button_click(update, context)
-
-  elif data == "toggle_rsi":
-    USER_SETTINGS[user_id]["strict_rsi"] = not USER_SETTINGS[user_id][
-        "strict_rsi"
-    ]
-    await button_click(update, context)
-
-  elif data == "toggle_wick":
-    USER_SETTINGS[user_id]["wick_confirm"] = not USER_SETTINGS[user_id][
-        "wick_confirm"
-    ]
-    await button_click(update, context)
-
-  # HISTORY
   elif data == "view_history":
     history = USER_HISTORY.get(user_id, [])
     if not history:
@@ -431,7 +350,6 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Signal History Cleared Successfully!", reply_markup=clear_buttons
     )
 
-  # WIN/LOSS TRACKER
   elif data in ["mark_win", "mark_loss"]:
     history = USER_HISTORY.get(user_id, [])
     if history:
@@ -447,7 +365,7 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
           ],
           [
               InlineKeyboardButton(
-                  "🎯 High-Accuracy Rescan", callback_data="high_accuracy_scan"
+                  "🔄 Request Another Signal", callback_data="regen_auto_scan"
               )
           ],
           [
@@ -463,16 +381,15 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
       except Exception as e:
         print(f"Markup update error: {e}")
 
-  # 🎯 MINIMALIST CLEAN UI SIGNAL GENERATOR WITH WEEKEND AUTO-DETECTOR
+  # CLEAN MINIMALIST SIGNAL GENERATOR
   elif (
-      data == "high_accuracy_scan"
-      or data == "auto_scan_pair"
+      data == "auto_scan_pair"
       or data == "regen_auto_scan"
       or data.startswith("time_")
       or data == "regen_signal"
   ):
 
-    is_auto = "auto" in data or "high" in data
+    is_auto = "auto" in data
     if data.startswith("time_"):
       context.user_data["time"] = data.split("_")[1]
 
@@ -482,16 +399,13 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else random.choice(["1 min", "2 min"])
     )
 
-    # 🗓️ GAMITIN ANG SMART WEEKEND DETECTOR!
     active_pool = get_active_pairs_pool()
-
     pair = (
         context.user_data.get("pair", "GBP/USD OTC")
         if not is_auto
         else random.choice(active_pool)
     )
 
-    # Siguraduhing kapag Weekend, may "(OTC)" ang pangalan ng pair!
     now_ph = datetime.datetime.now(ZoneInfo("Asia/Manila"))
     if now_ph.weekday() >= 5 and "OTC" not in pair:
       pair = f"{pair} OTC"
@@ -507,7 +421,7 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
       pass
 
-    live_price, rsi_val, sma20, macd_status = await fetch_deriv_live_data(pair)
+    live_price, rsi_val, macd_status = await fetch_deriv_live_data(pair)
     entry_time, exit_time = get_ph_timing(time_val)
 
     if rsi_val < 42:
@@ -615,7 +529,6 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
           parse_mode="Markdown",
       )
 
-  # SELECT MODEL
   elif data.startswith("model_"):
     context.user_data["model"] = data.split("_")[1]
     keyboard = [[
@@ -628,12 +541,10 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
-  # SELECT MARKET TYPE
   elif data.startswith("mkt_"):
     mkt_type = data.split("_")[1]
     context.user_data["market"] = mkt_type
 
-    # Pag Weekend, pilitin na OTC Pairs lang ang ipakita!
     now_ph = datetime.datetime.now(ZoneInfo("Asia/Manila"))
     raw_pairs = (
         OTC_PAIRS
@@ -658,7 +569,6 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
-  # SELECT PAIR
   elif data.startswith("pair_"):
     context.user_data["pair"] = data.split("_")[1]
     keyboard = [
@@ -678,7 +588,8 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ],
     ]
     await query.edit_message_text(
-        f"Selected Pair: {context.user_data['pair']}\n\nSelect Expiration Time:",
+        f"Selected Pair: {context.user_data['pair']}\n\nSelect Expiration"
+        " Time:",
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
@@ -687,7 +598,7 @@ def main():
   app = Application.builder().token(TELEGRAM_TOKEN).build()
   app.add_handler(CommandHandler("start", start))
   app.add_handler(CallbackQueryHandler(button_click))
-  print("Smart Weekend-Aware Pro Trading Bot is online...")
+  print("Custom Imgur Banners Deriv Trading Bot is online...")
   app.run_polling()
 
 
