@@ -615,6 +615,10 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     final_caption = f"""
 *{pair} | {time_val} | {action_type}*
 
+🕒 *Trade Timing (PH Standard Time):*
+• Entry Time: `{entry_time}` (Enter NOW!)
+• Exit Time: `{exit_time}`
+
 🤖 *3-AI Ensemble Consensus (Majority Vote):*
 • Gemini 2.0 Flash: {gem_v}
 • DeepSeek R1: {deep_v}
@@ -627,29 +631,11 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • Volume result: 79%
 • Sentiment: {sentiment_desc}
 
-💵 *Technical overview:*
-• Current price: {price_str}
-• Resistance (R1): {r1_str}
-• Support (S1): {s1_str}
-• RSI: {rsi_desc}
-• MACD: {macd_desc}
-• Moving Average: {ma_desc}
-
-🧠 *Adaptive AI Status:*
-• {adaptive_status_text}
-
 🧪 *Instant Backtest (Last 50 Candles):*
 • Historical Setups Found: {setups_found}
 • Past Wins: {past_wins} | Past Losses: {past_losses}
 • Backtest Win Rate: *{backtest_winrate}%* (Verified Setup) ✅
 
-🗿 *Signal strength:*
-• Strength: Strong ({strength_num}%)
-• Market conditions: Favorable
-
-🕒 *Trade Timing (PH Standard Time):*
-• Entry Time: `{entry_time}` (Enter NOW!)
-• Exit Time: `{exit_time}`
 """
 
     try:
