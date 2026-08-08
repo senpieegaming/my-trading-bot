@@ -23,8 +23,8 @@ DERIV_API_TOKEN = (
 DERIV_APP_ID = "1089"
 
 # CUSTOM IMGUR BANNERS:
-BUY_IMAGE_URL = "https://imgur.com/a/AzYhUAv"
-SELL_IMAGE_URL = "https://imgur.com/a/i1DDtZt"
+BUY_IMAGE_URL = "https://imgur.com/ZotkTwq"
+SELL_IMAGE_URL = "https://imgur.com/WefdIdk"
 
 USER_HISTORY = {}
 
