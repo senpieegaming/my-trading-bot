@@ -22,9 +22,9 @@ DERIV_API_TOKEN = (
 )
 DERIV_APP_ID = "1089"
 
-# DIRECT CDN LINKS PARA SA BUY AT SELL CHART BANNERS MO:
-BUY_IMAGE_URL = "https://i.ibb.co/3ykBfMh/BUY-BANNER.png"
-SELL_IMAGE_URL = "https://i.ibb.co/fvwMh1R/SELL-BANNER.png"
+# 100% WORKING PERMANENT IMAGE BANNERS FOR BUY & SELL:
+BUY_IMAGE_URL = "https://dummyimage.com/800x400/00c853/ffffff.jpg&text=%F0%9F%9F%A2+RECOMMENDATION:+BUY+%F0%9F%9F%A2"
+SELL_IMAGE_URL = "https://dummyimage.com/800x400/d50000/ffffff.jpg&text=%F0%9F%94%B4+RECOMMENDATION:+SELL+%F0%9F%94%B4"
 
 USER_HISTORY = {}
 USER_SETTINGS = {}
@@ -440,7 +440,7 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
       except Exception as e:
         print(f"Markup update error: {e}")
 
-  # 🎯 MINIMALIST CLEAN UI SIGNAL GENERATOR WITH CUSTOM BUY/SELL IMAGE BANNER
+  # 🎯 MINIMALIST CLEAN UI SIGNAL GENERATOR WITH SAFE PHOTO / TEXT FALLBACK
   elif (
       data == "high_accuracy_scan"
       or data == "auto_scan_pair"
@@ -465,7 +465,6 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     model = context.user_data.get("model", "Groq DeepSeek R1")
 
-    # Clean loading text
     try:
       await query.edit_message_text(
           f"Fetching {pair} Deriv Live Ticks...\n"
@@ -480,7 +479,6 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     live_price, rsi_val, sma20, macd_status = await fetch_deriv_live_data(pair)
     entry_time, exit_time = get_ph_timing(time_val)
 
-    # Direction Decision
     if rsi_val < 42:
       action_type = "Buy ▲"
       dir_word = "BUY"
@@ -517,7 +515,6 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "result": "PENDING ⏳",
     })
 
-    # Burahin ang text menu para ma-send ang malinis na photo + caption
     try:
       await query.message.delete()
     except:
@@ -544,9 +541,8 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ],
     ])
 
-    # MINIMALIST CAPTION MATCHING IMAGE 1 IN USER SCREENSHOT
     final_caption = f"""
-*{pair} | {timeframe_rec if is_auto else time_val} | {action_type}*
+*{pair} | {time_val} | {action_type}*
 
 📡 *Market info:*
 • Volatility: Above average
@@ -571,13 +567,25 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • Exit Time: `{exit_time}`
 """
 
-    await context.bot.send_photo(
-        chat_id=chat_id,
-        photo=banner_image,
-        caption=final_caption,
-        reply_markup=bottom_buttons,
-        parse_mode="Markdown",
-    )
+    # SAFE SENDING: SUSUBUKAN MURA I-SEND ANG PHOTO, PAG NAG-ERROR MAG-FALLBACK SA CLEAN TEXT!
+    try:
+      await context.bot.send_photo(
+          chat_id=chat_id,
+          photo=banner_image,
+          caption=final_caption,
+          reply_markup=bottom_buttons,
+          parse_mode="Markdown",
+      )
+    except Exception as photo_err:
+      print(
+          f"Photo send error ({photo_err}), falling back to text signal..."
+      )
+      await context.bot.send_message(
+          chat_id=chat_id,
+          text=final_caption,
+          reply_markup=bottom_buttons,
+          parse_mode="Markdown",
+      )
 
   # SELECT MODEL
   elif data.startswith("model_"):
@@ -639,7 +647,7 @@ def main():
   app = Application.builder().token(TELEGRAM_TOKEN).build()
   app.add_handler(CommandHandler("start", start))
   app.add_handler(CallbackQueryHandler(button_click))
-  print("Clean Minimalist Pro Trading Bot is online...")
+  print("Safe Robust Minimalist Pro Trading Bot is online...")
   app.run_polling()
 
 
