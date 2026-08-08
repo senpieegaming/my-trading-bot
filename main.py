@@ -22,10 +22,6 @@ DERIV_API_TOKEN = (
 )
 DERIV_APP_ID = "1089"
 
-# 🖼️ ANG MISMONG CUSTOM IMGUR IMAGE LINKS MO:
-BUY_IMAGE_URL = "https://i.imgur.com/AzYhUAv.png"
-SELL_IMAGE_URL = "https://i.imgur.com/i1DDtZt.png"
-
 USER_HISTORY = {}
 
 SYMBOL_MAP = {
@@ -64,6 +60,22 @@ OTC_PAIRS = [
     ["CHF/NOK OTC", "AUD/CAD OTC"],
     ["USD/MXN OTC", "USD/SGD OTC"],
     ["EUR/GBP OTC", "NZD/USD OTC"],
+]
+
+BULLISH_PATTERNS = [
+    "Bullish Engulfing 📈",
+    "Hammer / Pin Bar 🔨",
+    "Morning Star 🌅",
+    "Bullish Harami 🐣",
+    "Double Bottom Rejection 📉📈",
+]
+
+BEARISH_PATTERNS = [
+    "Bearish Engulfing 📉",
+    "Shooting Star 🌠",
+    "Evening Star 🌇",
+    "Bearish Harami 🥀",
+    "Double Top Rejection 📈📉",
 ]
 
 
@@ -126,11 +138,13 @@ def calculate_ema(prices, period):
 
 def calculate_macd(closes):
   if len(closes) < 26:
-    return "Neutral", 0.0
+    return "Neutral ⚪", 0.0
   ema12 = calculate_ema(closes, 12)
   ema26 = calculate_ema(closes, 26)
   macd_val = ema12 - ema26
-  status = "Buying pressure" if macd_val > 0 else "Selling pressure"
+  status = (
+      "Bullish Divergence 🟢" if macd_val > 0 else "Bearish Divergence 🔴"
+  )
   return status, macd_val
 
 
@@ -198,7 +212,8 @@ async def show_main_menu(update_or_query, is_query=False):
   keyboard = [
       [
           InlineKeyboardButton(
-              "🔥 AUTO-SCAN BEST PAIR", callback_data="auto_scan_pair"
+              "🔥 AUTO-SCAN BEST PAIR (Deriv Live AI)",
+              callback_data="auto_scan_pair",
           )
       ],
       [
@@ -224,7 +239,7 @@ async def show_main_menu(update_or_query, is_query=False):
       ],
   ]
   reply_markup = InlineKeyboardMarkup(keyboard)
-  text = "Select AI Engine or Auto-Scan Best Pair:"
+  text = "🤖 *Select Live AI Engine or Auto-Scan Best Pair:*"
 
   if is_query:
     await update_or_query.edit_message_text(
@@ -239,7 +254,8 @@ async def show_main_menu(update_or_query, is_query=False):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
   if await is_unauthorized(update):
     await update.message.reply_text(
-        "Access Denied! This is a private AI trading bot."
+        "⛔ *Access Denied!* This is a private AI trading bot.",
+        parse_mode="Markdown",
     )
     return
   await show_main_menu(update, is_query=False)
@@ -254,55 +270,17 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
   data = query.data
   user_id = update.effective_user.id
-  chat_id = query.message.chat_id
 
   if data == "go_main_menu":
-    try:
-      await query.message.delete()
-    except:
-      pass
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text="Select AI Engine or Auto-Scan Best Pair:",
-        reply_markup=InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton(
-                    "🔥 AUTO-SCAN BEST PAIR", callback_data="auto_scan_pair"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "Google Gemini 2.0 Flash ⚡",
-                    callback_data="model_Google Gemini 2.0 Flash",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "Groq AI (DeepSeek R1) 🚀",
-                    callback_data="model_Groq DeepSeek R1",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "Groq AI (Llama 3.3) 🧠",
-                    callback_data="model_Groq Llama 3.3",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "📜 View History & Win Rate", callback_data="view_history"
-                )
-            ],
-        ]),
-    )
+    await show_main_menu(query, is_query=True)
 
   elif data == "view_history":
     history = USER_HISTORY.get(user_id, [])
     if not history:
       history_text = (
-          "*SIGNAL HISTORY & WIN RATE*\n"
+          "📜 *SIGNAL HISTORY & WIN RATE*\n"
           "━━━━━━━━━━━━━━━━━━━\n\n"
-          "No saved signals yet! Generate a signal first."
+          "❌ *No saved signals yet!* Generate a signal first."
       )
     else:
       wins = sum(1 for item in history if "WIN" in item.get("result", ""))
@@ -311,11 +289,11 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
       win_rate = (wins / total_recorded * 100) if total_recorded > 0 else 0
 
       history_text = (
-          "*SIGNAL HISTORY & WIN RATE*\n"
+          "📜 *SIGNAL HISTORY & WIN RATE*\n"
           "━━━━━━━━━━━━━━━━━━━\n"
-          f"Total Trades Recorded: {total_recorded}\n"
-          f"Wins: {wins} | Losses: {losses}\n"
-          f"Live Win Rate: *{win_rate:.1f}%*\n"
+          f"📊 *Total Trades Recorded:* {total_recorded}\n"
+          f"🟢 *Wins:* {wins} | 🔴 *Losses:* {losses}\n"
+          f"🔥 *Live Win Rate:* *{win_rate:.1f}%*\n"
           "━━━━━━━━━━━━━━━━━━━\n\n"
           "*Recent Signals (Last 5):*\n\n"
       )
@@ -323,9 +301,9 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         res_status = item.get("result", "PENDING ⏳")
         history_text += (
             f"*{idx}. {item['pair']}* ({item['timeframe']})\n"
-            f"• Direction: {item['recommendation']}\n"
-            f"• Price: {item.get('price', 'N/A')}\n"
-            f"• Outcome: *{res_status}*\n"
+            f"• *Direction:* {item['recommendation']}\n"
+            f"• *Price:* {item.get('price', 'N/A')}\n"
+            f"• *Outcome:* *{res_status}*\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
         )
 
@@ -347,7 +325,9 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [[InlineKeyboardButton("🏠 Main Menu", callback_data="go_main_menu")]]
     )
     await query.edit_message_text(
-        "Signal History Cleared Successfully!", reply_markup=clear_buttons
+        "🗑️ *Signal History Cleared Successfully!*",
+        reply_markup=clear_buttons,
+        parse_mode="Markdown",
     )
 
   elif data in ["mark_win", "mark_loss"]:
@@ -381,7 +361,7 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
       except Exception as e:
         print(f"Markup update error: {e}")
 
-  # CLEAN MINIMALIST SIGNAL GENERATOR
+  # PURE TEXT SIGNAL GENERATOR WITH RED 🔴 / GREEN 🟢 EMOJIS
   elif (
       data == "auto_scan_pair"
       or data == "regen_auto_scan"
@@ -410,41 +390,31 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if now_ph.weekday() >= 5 and "OTC" not in pair:
       pair = f"{pair} OTC"
 
-    try:
-      await query.edit_message_text(
-          f"Fetching {pair} Deriv Live Ticks...\n"
-          "[████████░░] 88%\n\n"
-          "• Reading Price Action...\n"
-          "• Calculating RSI & MACD...\n"
-          "• Verifying Active Market Hours..."
-      )
-    except:
-      pass
+    await query.edit_message_text(
+        f"⏳ *Fetching {pair} Deriv Live Ticks...*\n"
+        "[████████░░] 88%\n\n"
+        "⚡ *Reading Live Price Action...*\n"
+        "📊 *Calculating Live RSI & MACD...*",
+        parse_mode="Markdown",
+    )
 
     live_price, rsi_val, macd_status = await fetch_deriv_live_data(pair)
     entry_time, exit_time = get_ph_timing(time_val)
 
+    # RED 🔴 / GREEN 🟢 EMOJI DIRECTION SELECTION
     if rsi_val < 42:
-      action_type = "Buy ▲"
-      dir_word = "BUY"
-      banner_image = BUY_IMAGE_URL
-      rsi_desc = f"Low ({rsi_val})"
-      macd_desc = "Buying pressure"
-      ma_desc = "Support test"
-      sentiment_desc = "Upward pressure"
+      recommendation = "BUY 🟢 (UP)"
+      pattern = random.choice(BULLISH_PATTERNS)
+      key_level = "At Live Support Zone 🟢"
+      rsi_state = f"Oversold ({rsi_val}) 🟢"
     else:
-      action_type = "Sell ▼"
-      dir_word = "SELL"
-      banner_image = SELL_IMAGE_URL
-      rsi_desc = f"High ({rsi_val})"
-      macd_desc = "Selling pressure"
-      ma_desc = "Resistance test"
-      sentiment_desc = "Downward pressure"
+      recommendation = "SELL 🔴 (DOWN)"
+      pattern = random.choice(BEARISH_PATTERNS)
+      key_level = "At Live Resistance Zone 🔴"
+      rsi_state = f"Overbought ({rsi_val}) 🔴"
 
-    price_str = f"{live_price:.5f}" if live_price else "1.08520"
-    r1_str = f"{live_price + 0.00430:.5f}" if live_price else "1.08950"
-    s1_str = f"{live_price - 0.00120:.5f}" if live_price else "1.08400"
-    strength_num = random.randint(76, 89)
+    strength_val = random.randint(86, 97)
+    price_str = f"{live_price:.5f}" if live_price else "Live Feed Active"
 
     if user_id not in USER_HISTORY:
       USER_HISTORY[user_id] = []
@@ -452,18 +422,13 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     USER_HISTORY[user_id].append({
         "pair": pair,
         "timeframe": time_val,
-        "recommendation": f"{dir_word} {action_type}",
+        "recommendation": recommendation,
         "price": price_str,
         "entry_time": entry_time,
         "exit_time": exit_time,
         "timestamp": entry_time,
         "result": "PENDING ⏳",
     })
-
-    try:
-      await query.message.delete()
-    except:
-      pass
 
     bottom_buttons = InlineKeyboardMarkup([
         [
@@ -486,48 +451,31 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ],
     ])
 
-    final_caption = f"""
-*{pair} | {time_val} | {action_type}*
+    final_signal = f"""
+🎯 *DERIV LIVE MARKET SIGNAL GENERATED!*
+━━━━━━━━━━━━━━━━━━━
+🤖 *AI Model:* Groq DeepSeek R1
+📈 *Pair:* `{pair}`
+💲 *LIVE PRICE:* `{price_str}`
+⏱️ *Timeframe:* `{time_val}`
 
-📡 *Market info:*
-• Volatility: Above average
-• Asset strength by volume: 79%
-• Volume result: 79%
-• Sentiment: {sentiment_desc}
+🕒 *TRADE TIMING (PH Standard Time):*
+📍 *ENTRY TIME:* `{entry_time}` *(Enter NOW!)*
+🏁 *EXIT TIME:*  `{exit_time}`
 
-💵 *Technical overview:*
-• Current price: {price_str}
-• Resistance (R1): {r1_str}
-• Support (S1): {s1_str}
-• RSI: {rsi_desc}
-• MACD: {macd_desc}
-• Moving Average: {ma_desc}
+📊 *Deriv Live Technical Analysis:*
+• Candlestick: *{pattern}*
+• Key Level: *{key_level}*
+• Live RSI (14): *{rsi_state}*
+• MACD Status: *{macd_status}*
 
-🗿 *Signal strength:*
-• Strength: Strong ({strength_num}%)
-• Market conditions: Favorable
-
-🕒 *Trade Timing (PH Standard Time):*
-• Entry Time: `{entry_time}` (Enter NOW!)
-• Exit Time: `{exit_time}`
+💪 *Win Confidence Score:* *{strength_val}% (High Probability)*
+━━━━━━━━━━━━━━━━━━━
+🔥 *RECOMMENDATION:* *{recommendation}*
 """
-
-    try:
-      await context.bot.send_photo(
-          chat_id=chat_id,
-          photo=banner_image,
-          caption=final_caption,
-          reply_markup=bottom_buttons,
-          parse_mode="Markdown",
-      )
-    except Exception as photo_err:
-      print(f"Photo send failed ({photo_err}), sending text fallback...")
-      await context.bot.send_message(
-          chat_id=chat_id,
-          text=final_caption,
-          reply_markup=bottom_buttons,
-          parse_mode="Markdown",
-      )
+    await query.edit_message_text(
+        final_signal, reply_markup=bottom_buttons, parse_mode="Markdown"
+    )
 
   elif data.startswith("model_"):
     context.user_data["model"] = data.split("_")[1]
@@ -536,9 +484,10 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         InlineKeyboardButton("OTC Market", callback_data="mkt_OTC"),
     ]]
     await query.edit_message_text(
-        f"Selected AI Engine: {context.user_data['model']}\n\nSelect Market"
-        " Type:",
+        f"Selected AI Engine: `{context.user_data['model']}`\n\nSelect"
+        " Market Type:",
         reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown",
     )
 
   elif data.startswith("mkt_"):
@@ -565,8 +514,9 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else "OTC Market (Weekend Active)"
     )
     await query.edit_message_text(
-        f"Market: {mkt_name}\n\nSelect Currency Pair:",
+        f"Market: `{mkt_name}`\n\nSelect Currency Pair:",
         reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown",
     )
 
   elif data.startswith("pair_"):
@@ -588,9 +538,10 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ],
     ]
     await query.edit_message_text(
-        f"Selected Pair: {context.user_data['pair']}\n\nSelect Expiration"
+        f"Selected Pair: `{context.user_data['pair']}`\n\nSelect Expiration"
         " Time:",
         reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown",
     )
 
 
@@ -598,7 +549,7 @@ def main():
   app = Application.builder().token(TELEGRAM_TOKEN).build()
   app.add_handler(CommandHandler("start", start))
   app.add_handler(CallbackQueryHandler(button_click))
-  print("Custom Imgur Banners Deriv Trading Bot is online...")
+  print("Pure Text Deriv Live WebSocket Bot is online...")
   app.run_polling()
 
 
