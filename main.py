@@ -62,6 +62,22 @@ OTC_PAIRS = [
     ["EUR/GBP OTC", "NZD/USD OTC"],
 ]
 
+BULLISH_PATTERNS = [
+    "HA Bullish Momentum 📈",
+    "HA Bullish Reversal Pinbar 🔨",
+    "HA Morning Star Sequence 🌅",
+    "TrendSpider Support Rejection 🛡️",
+    "Tickeron High-Odds Rebound 📊",
+]
+
+BEARISH_PATTERNS = [
+    "HA Bearish Momentum 📉",
+    "HA Bearish Reversal Star 🌠",
+    "HA Evening Star Sequence 🌇",
+    "TrendSpider Resistance Rejection 🛡️",
+    "Tickeron High-Odds Break 📊",
+]
+
 
 # 🗓️ SMART WEEKEND DETECTOR
 def get_active_pairs_pool():
@@ -280,13 +296,31 @@ async def is_unauthorized(update: Update) -> bool:
   return False
 
 
-# MAIN MENU
+# MAIN MENU WITH ALL AI ENGINES
 async def show_main_menu(update_or_query, is_query=False):
   keyboard = [
       [
           InlineKeyboardButton(
               "🔥 AUTO-SCAN BEST PAIR (Deriv Live AI)",
               callback_data="auto_scan_pair",
+          )
+      ],
+      [
+          InlineKeyboardButton(
+              "🦅 Holly AI (Quant Probability Engine)",
+              callback_data="model_Holly AI Quant",
+          )
+      ],
+      [
+          InlineKeyboardButton(
+              "🕷️ TrendSpider AI (Multi-Trendline)",
+              callback_data="model_TrendSpider AI",
+          )
+      ],
+      [
+          InlineKeyboardButton(
+              "🤖 Tickeron AI (Pattern Odds Engine)",
+              callback_data="model_Tickeron AI Odds",
           )
       ],
       [
@@ -369,7 +403,8 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         res_status = item.get("result", "PENDING ⏳")
         history_text += (
             f"*{idx}. {item['pair']}* ({item['timeframe']})\n"
-            f"• *Signal:* {item['recommendation']}\n"
+            f"• *Direction:* {item['recommendation']}\n"
+            f"• *Price:* {item.get('price', 'N/A')}\n"
             f"• *Outcome:* *{res_status}*\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
         )
@@ -521,7 +556,6 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ],
     ])
 
-    # SUPER SHORT & COMPACT TEXT CARD OUTPUT
     final_signal = f"""
 🎯 *{pair}* (`{time_val}`)
 💲 *Price:* `{price_str}`
@@ -609,7 +643,7 @@ def main():
   app = Application.builder().token(TELEGRAM_TOKEN).build()
   app.add_handler(CommandHandler("start", start))
   app.add_handler(CallbackQueryHandler(button_click))
-  print("Compact Pure Text Deriv Live WebSocket Bot is online...")
+  print("Complete Multi-AI Deriv Trading Bot is online...")
   app.run_polling()
 
 
