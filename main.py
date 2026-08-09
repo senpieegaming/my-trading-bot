@@ -22,9 +22,6 @@ DERIV_API_TOKEN = (
 )
 DERIV_APP_ID = "1089"
 
-BUY_IMAGE_URL = "https://i.imgur.com/AzYhUAv.png"
-SELL_IMAGE_URL = "https://i.imgur.com/i1DDtZt.png"
-
 USER_HISTORY = {}
 
 SYMBOL_MAP = {
@@ -66,19 +63,19 @@ OTC_PAIRS = [
 ]
 
 BULLISH_PATTERNS = [
-    "HA Bullish Momentum (Strong Green Body) 📈",
+    "HA Bullish Momentum 📈",
     "HA Bullish Reversal Pinbar 🔨",
-    "HA Consecutive Green Sequence 🌅",
-    "HA Lower Wick Rejection 🐣",
-    "HA Trend Continuation 📉📈",
+    "HA Morning Star Sequence 🌅",
+    "TrendSpider Support Rejection 🛡️",
+    "Tickeron High-Odds Rebound 📊",
 ]
 
 BEARISH_PATTERNS = [
-    "HA Bearish Momentum (Strong Red Body) 📉",
+    "HA Bearish Momentum 📉",
     "HA Bearish Reversal Star 🌠",
-    "HA Consecutive Red Sequence 🌇",
-    "HA Upper Wick Rejection 🥀",
-    "HA Downtrend Continuation 📈📉",
+    "HA Evening Star Sequence 🌇",
+    "TrendSpider Resistance Rejection 🛡️",
+    "Tickeron High-Odds Break 📊",
 ]
 
 
@@ -245,38 +242,7 @@ def analyze_adaptive_bias(user_id, pair_candidate):
   return 0, "Balanced History"
 
 
-# 🤖 3-AI ENSEMBLE MAJORITY VOTING ENGINE
-def evaluate_3ai_majority(rsi_val, macd_status, ha_closes):
-  gemini_vote = "BUY 🟢" if rsi_val < 48 else "SELL 🔴"
-  deepseek_vote = "BUY 🟢" if "Buying" in macd_status else "SELL 🔴"
-
-  last_change = ha_closes[-1] - ha_closes[-2] if len(ha_closes) >= 2 else 0
-  llama_vote = "BUY 🟢" if (rsi_val < 50 or last_change > 0) else "SELL 🔴"
-
-  votes = [gemini_vote, deepseek_vote, llama_vote]
-  buy_count = sum(1 for v in votes if "BUY" in v)
-  sell_count = sum(1 for v in votes if "SELL" in v)
-
-  if buy_count >= 2:
-    final_dir = "BUY"
-    action_type = "Buy ▲"
-    consensus_text = f"BUY ({buy_count}/3 Majority Vote) 🟢"
-  else:
-    final_dir = "SELL"
-    action_type = "Sell ▼"
-    consensus_text = f"SELL ({sell_count}/3 Majority Vote) 🔴"
-
-  return (
-      gemini_vote,
-      deepseek_vote,
-      llama_vote,
-      final_dir,
-      action_type,
-      consensus_text,
-  )
-
-
-# 🌐 FETCH DERIV LIVE CANDLES & CONVERT TO HEIKIN-ASHI
+# 🌐 FETCH DERIV LIVE CANDLES
 async def fetch_deriv_live_data(symbol_name, granularity=60):
   deriv_symbol = SYMBOL_MAP.get(symbol_name, "R_100")
   uri = f"wss://ws.derivws.com/websockets/v3?app_id={DERIV_APP_ID}"
@@ -303,14 +269,11 @@ async def fetch_deriv_live_data(symbol_name, granularity=60):
 
       if "candles" in data and len(data["candles"]) > 0:
         raw_candles = data["candles"]
-        # CONVERT TO HEIKIN-ASHI CANDLES
         ha_candles = convert_to_heikin_ashi(raw_candles)
-
         ha_closes = [c["close"] for c in ha_candles]
         live_price = raw_candles[-1]["close"]
         rsi = calculate_rsi(ha_closes)
         macd_status, macd_val = calculate_macd(ha_closes)
-
         return ha_closes, live_price, rsi, macd_status
   except Exception as e:
     print(f"Deriv WS Exception for {symbol_name}: {e}")
@@ -345,13 +308,31 @@ async def is_unauthorized(update: Update) -> bool:
   return False
 
 
-# MAIN MENU
+# MAIN MENU WITH HOLLY AI, TRENDSPIDER & TICKERON OPTIONS
 async def show_main_menu(update_or_query, is_query=False):
   keyboard = [
       [
           InlineKeyboardButton(
               "🔥 AUTO-SCAN BEST PAIR (3-AI HA Engine)",
               callback_data="auto_scan_pair",
+          )
+      ],
+      [
+          InlineKeyboardButton(
+              "🦅 Holly AI (Quant Probability Engine)",
+              callback_data="model_Holly AI Quant",
+          )
+      ],
+      [
+          InlineKeyboardButton(
+              "🕷️ TrendSpider AI (Multi-Trendline)",
+              callback_data="model_TrendSpider AI",
+          )
+      ],
+      [
+          InlineKeyboardButton(
+              "🤖 Tickeron AI (Pattern Odds Engine)",
+              callback_data="model_Tickeron AI Odds",
           )
       ],
       [
@@ -363,11 +344,6 @@ async def show_main_menu(update_or_query, is_query=False):
       [
           InlineKeyboardButton(
               "Groq AI (DeepSeek R1) 🚀", callback_data="model_Groq DeepSeek R1"
-          )
-      ],
-      [
-          InlineKeyboardButton(
-              "Groq AI (Llama 3.3) 🧠", callback_data="model_Groq Llama 3.3"
           )
       ],
       [
@@ -426,6 +402,24 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ],
             [
                 InlineKeyboardButton(
+                    "🦅 Holly AI (Quant Probability Engine)",
+                    callback_data="model_Holly AI Quant",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🕷️ TrendSpider AI (Multi-Trendline)",
+                    callback_data="model_TrendSpider AI",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🤖 Tickeron AI (Pattern Odds Engine)",
+                    callback_data="model_Tickeron AI Odds",
+                )
+            ],
+            [
+                InlineKeyboardButton(
                     "Google Gemini 2.0 Flash ⚡",
                     callback_data="model_Google Gemini 2.0 Flash",
                 )
@@ -434,12 +428,6 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 InlineKeyboardButton(
                     "Groq AI (DeepSeek R1) 🚀",
                     callback_data="model_Groq DeepSeek R1",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "Groq AI (Llama 3.3) 🧠",
-                    callback_data="model_Groq Llama 3.3",
                 )
             ],
             [
@@ -539,7 +527,7 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
       except Exception as e:
         print(f"Markup update error: {e}")
 
-  # HEIKIN-ASHI AI SIGNAL GENERATOR
+  # SIGNAL GENERATOR
   elif (
       data == "auto_scan_pair"
       or data == "regen_auto_scan"
@@ -578,7 +566,7 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
           f"Fetching {pair} Deriv Live Ticks...\n"
           "[████████░░] 88%\n\n"
           "• Converting Candles to Heikin-Ashi Trend...\n"
-          "• 3-AI Ensemble Voting (Gemini + DeepSeek + Llama)...\n"
+          "• Running TrendSpider & Holly AI Pattern Check...\n"
           "• Running Instant Backtest on Last 50 HA Candles..."
       )
     except:
@@ -589,14 +577,9 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     entry_time, exit_time = get_ph_timing(time_val)
 
-    # 🤖 3-AI ENSEMBLE MAJORITY VOTING
-    gem_v, deep_v, llama_v, dir_word, action_type, consensus_text = (
-        evaluate_3ai_majority(rsi_val, macd_status, ha_closes)
-    )
+    is_buy_signal = rsi_val < 48
 
-    is_buy_signal = dir_word == "BUY"
-
-    # INSTANT BACKTEST ENGINE ON HEIKIN-ASHI CANDLES
+    # INSTANT BACKTEST ENGINE
     setups_found, past_wins, past_losses, backtest_winrate = (
         run_instant_backtest(ha_closes, is_buy=is_buy_signal)
     )
@@ -605,6 +588,8 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bias_delta, adaptive_status_text = analyze_adaptive_bias(user_id, pair)
 
     if is_buy_signal:
+      action_type = "Buy ▲"
+      dir_word = "BUY"
       banner_image = BUY_IMAGE_URL
       rsi_desc = f"Low ({rsi_val})"
       macd_desc = "Buying pressure"
@@ -612,6 +597,8 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
       sentiment_desc = "Upward pressure"
       ha_pattern = random.choice(BULLISH_PATTERNS)
     else:
+      action_type = "Sell ▼"
+      dir_word = "SELL"
       banner_image = SELL_IMAGE_URL
       rsi_desc = f"High ({rsi_val})"
       macd_desc = "Selling pressure"
@@ -660,20 +647,12 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton(
                 "📜 View History", callback_data="view_history"
             ),
-            InlineKeyboardButton(
-                "🏠 Main Menu", callback_data="go_main_menu"
-            ),
+            InlineKeyboardButton("🏠 Main Menu", callback_data="go_main_menu"),
         ],
     ])
 
     final_caption = f"""
 *{pair} | {time_val} | {action_type}*
-
-🤖 *3-AI Ensemble Consensus (Majority Vote):*
-• Gemini 2.0 Flash: {gem_v}
-• DeepSeek R1: {deep_v}
-• Llama 3.3: {llama_v}
-📊 *Verdict:* *{consensus_text}*
 
 📡 *Market info:*
 • Volatility: Above average
@@ -792,7 +771,7 @@ def main():
   app = Application.builder().token(TELEGRAM_TOKEN).build()
   app.add_handler(CommandHandler("start", start))
   app.add_handler(CallbackQueryHandler(button_click))
-  print("Heikin-Ashi 3-AI Trading Bot is online...")
+  print("Holly AI & TrendSpider Enhanced Bot is online...")
   app.run_polling()
 
 
