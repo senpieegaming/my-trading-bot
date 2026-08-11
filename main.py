@@ -3,7 +3,7 @@ import datetime
 from datetime import timedelta
 import json
 import logging
-import random
+import os
 from zoneinfo import ZoneInfo
 import websockets
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -14,13 +14,16 @@ from telegram.ext import (
     ContextTypes,
 )
 
-# 🔑 CONFIGURATION (PRE-CONFIGURED WITH YOUR TOKENS):
-TELEGRAM_TOKEN = "8743360999:AAGoyTpnZNtcOa414MmACkzesVUYkGxELh4"
-ALLOWED_USER_ID = 8434566946
-DERIV_API_TOKEN = (
-    "pat_42e45881470d8cb66ad03ba581c0e5e3ffb6076a77d17a8c9e78a8b938da6844"
-)
-DERIV_APP_ID = "1089"
+logging.basicConfig(level=logging.INFO)
+
+# 🔑 CONFIGURATION
+# NOTE: Tokens moved to environment variables. Set these on Railway
+# (Variables tab) instead of hardcoding them in source. If these tokens
+# were ever committed to a public/shared repo, revoke and regenerate them.
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
+ALLOWED_USER_ID = int(os.environ.get("ALLOWED_USER_ID", "0"))
+DERIV_API_TOKEN = os.environ.get("DERIV_API_TOKEN", "")
+DERIV_APP_ID = os.environ.get("DERIV_APP_ID", "1089")
 
 BUY_IMAGE_URL = "https://i.imgur.com/AzYhUAv.png"
 SELL_IMAGE_URL = "https://i.imgur.com/i1DDtZt.png"
@@ -65,41 +68,17 @@ OTC_PAIRS = [
     ["EUR/GBP OTC", "NZD/USD OTC"],
 ]
 
-BULLISH_PATTERNS = [
-    "HA Bullish Momentum 📈",
-    "Hammer / Pin Bar 🔨",
-    "Morning Star Sequence 🌅",
-    "EMA 5/13 Crossover Rebound 📈",
-    "Bollinger Lower Band Bounce 🛡️",
-]
-
-BEARISH_PATTERNS = [
-    "HA Bearish Momentum 📉",
-    "Shooting Star 🌠",
-    "Evening Star Sequence 🌇",
-    "EMA 5/13 Bearish Cross 📉",
-    "Bollinger Upper Band Rejection 🛡️",
-]
-
 
 # 🗓️ SMART WEEKEND DETECTOR
 def get_active_pairs_pool():
   now_ph = datetime.datetime.now(ZoneInfo("Asia/Manila"))
   if now_ph.weekday() >= 5:  # Saturday or Sunday
     return [
-        "EUR/USD OTC",
-        "GBP/USD OTC",
-        "GBP/JPY OTC",
-        "USD/CAD OTC",
-        "CHF/NOK OTC",
-        "AUD/CAD OTC",
-        "USD/MXN OTC",
-        "USD/SGD OTC",
-        "EUR/GBP OTC",
-        "NZD/USD OTC",
+        "EUR/USD OTC", "GBP/USD OTC", "GBP/JPY OTC", "USD/CAD OTC",
+        "CHF/NOK OTC", "AUD/CAD OTC", "USD/MXN OTC", "USD/SGD OTC",
+        "EUR/GBP OTC", "NZD/USD OTC",
     ]
-  else:
-    return list(SYMBOL_MAP.keys())
+  return list(SYMBOL_MAP.keys())
 
 
 # 🕯️ HEIKIN-ASHI CANDLE CONVERTER
@@ -108,19 +87,12 @@ def convert_to_heikin_ashi(raw_candles):
     return []
   ha_candles = []
   first = raw_candles[0]
-  ha_close = (
-      first["open"] + first["high"] + first["low"] + first["close"]
-  ) / 4
+  ha_close = (first["open"] + first["high"] + first["low"] + first["close"]) / 4
   ha_open = (first["open"] + first["close"]) / 2
   ha_high = max(first["high"], ha_open, ha_close)
   ha_low = min(first["low"], ha_open, ha_close)
 
-  ha_candles.append({
-      "open": ha_open,
-      "high": ha_high,
-      "low": ha_low,
-      "close": ha_close,
-  })
+  ha_candles.append({"open": ha_open, "high": ha_high, "low": ha_low, "close": ha_close})
 
   for i in range(1, len(raw_candles)):
     c = raw_candles[i]
@@ -130,10 +102,8 @@ def convert_to_heikin_ashi(raw_candles):
     curr_ha_high = max(c["high"], curr_ha_open, curr_ha_close)
     curr_ha_low = min(c["low"], curr_ha_open, curr_ha_close)
     ha_candles.append({
-        "open": curr_ha_open,
-        "high": curr_ha_high,
-        "low": curr_ha_low,
-        "close": curr_ha_close,
+        "open": curr_ha_open, "high": curr_ha_high,
+        "low": curr_ha_low, "close": curr_ha_close,
     })
   return ha_candles
 
@@ -185,10 +155,30 @@ def calculate_macd(closes):
   return status, macd_val
 
 
+def calculate_volatility_desc(closes):
+  """Real volatility estimate from stdev of recent closes (no fake filler)."""
+  if not closes or len(closes) < 10:
+    return "Unknown (insufficient data)"
+  recent = closes[-20:] if len(closes) >= 20 else closes
+  mean = sum(recent) / len(recent)
+  variance = sum((c - mean) ** 2 for c in recent) / len(recent)
+  stdev = variance ** 0.5
+  pct = (stdev / mean) * 100 if mean else 0
+  if pct < 0.05:
+    return f"Low ({pct:.3f}% stdev)"
+  elif pct < 0.15:
+    return f"Moderate ({pct:.3f}% stdev)"
+  return f"High ({pct:.3f}% stdev)"
+
+
 # 🧪 INSTANT BACKTEST ENGINE
 def run_instant_backtest(closes, is_buy=True):
+  """
+  Returns (setups_found, past_wins, past_losses, win_rate) or None if there
+  isn't enough real data to back up a win-rate claim. No fake fallback stats.
+  """
   if not closes or len(closes) < 20:
-    return 6, 5, 1, 83.3
+    return None
 
   setups_found, past_wins = 0, 0
   for i in range(15, len(closes) - 1):
@@ -204,25 +194,23 @@ def run_instant_backtest(closes, is_buy=True):
         past_wins += 1
 
   if setups_found == 0:
-    return 6, 5, 1, 83.3
+    return None
 
   past_losses = setups_found - past_wins
   win_rate = round((past_wins / setups_found) * 100, 1)
   return setups_found, past_wins, past_losses, win_rate
 
 
-# 🧠 ADAPTIVE AI SELF-LEARNING
+# 🧠 ADAPTIVE AI SELF-LEARNING (based on the user's own recorded WIN/LOSS history — real data)
 def analyze_adaptive_bias(user_id, pair_candidate):
   history = USER_HISTORY.get(user_id, [])
   if not history:
     return 0, "Standard Mode"
 
   pair_trades = [
-      h
-      for h in history
+      h for h in history
       if pair_candidate in h.get("pair", "") and h.get("result") != "PENDING ⏳"
   ]
-
   if not pair_trades:
     return 0, "Standard Mode"
 
@@ -234,22 +222,26 @@ def analyze_adaptive_bias(user_id, pair_candidate):
     return -15, "Penalty Mode"
   elif wins > losses:
     return +10, "Win-Boost Mode"
-
   return 0, "Standard Mode"
 
 
 # 🌐 FETCH DERIV LIVE WEBSOCKET DATA
 async def fetch_deriv_live_data(symbol_name, granularity=60):
+  """
+  Returns (ha_closes, live_price, rsi, macd_status) on success.
+  Returns (None, None, None, None) on ANY failure — caller must NOT
+  fabricate a signal when this happens.
+  """
   deriv_symbol = SYMBOL_MAP.get(symbol_name, "R_100")
   uri = f"wss://ws.derivws.com/websockets/v3?app_id={DERIV_APP_ID}"
 
   try:
-    async with websockets.connect(
-        uri, close_timeout=5, ping_timeout=5
-    ) as websocket:
-      auth_req = {"authorize": DERIV_API_TOKEN}
-      await websocket.send(json.dumps(auth_req))
-      await websocket.recv()
+    async with websockets.connect(uri, close_timeout=5, ping_timeout=5) as websocket:
+      await websocket.send(json.dumps({"authorize": DERIV_API_TOKEN}))
+      auth_res = json.loads(await websocket.recv())
+      if "error" in auth_res:
+        logging.error(f"Deriv auth failed: {auth_res['error']}")
+        return None, None, None, None
 
       req = {
           "ticks_history": deriv_symbol,
@@ -263,31 +255,35 @@ async def fetch_deriv_live_data(symbol_name, granularity=60):
       res = await websocket.recv()
       data = json.loads(res)
 
+      if "error" in data:
+        logging.error(f"Deriv data error for {symbol_name}: {data['error']}")
+        return None, None, None, None
+
       if "candles" in data and len(data["candles"]) > 0:
         raw_candles = data["candles"]
         ha_candles = convert_to_heikin_ashi(raw_candles)
         ha_closes = [c["close"] for c in ha_candles]
         live_price = raw_candles[-1]["close"]
         rsi = calculate_rsi(ha_closes)
-        macd_status, macd_val = calculate_macd(ha_closes)
+        macd_status, _ = calculate_macd(ha_closes)
         return ha_closes, live_price, rsi, macd_status
-  except Exception as e:
-    print(f"Deriv WS Exception for {symbol_name}: {e}")
 
-  return None, None, round(random.uniform(22.0, 78.0), 2), "Selling pressure"
+      logging.warning(f"No candles returned for {symbol_name}")
+      return None, None, None, None
+
+  except Exception as e:
+    logging.error(f"Deriv WS Exception for {symbol_name}: {e}")
+    return None, None, None, None
 
 
 def get_ph_timing(timeframe_str):
   now_ph = datetime.datetime.now(ZoneInfo("Asia/Manila"))
   if "sec" in timeframe_str:
-    seconds_add = int(timeframe_str.split()[0])
-    delta = timedelta(seconds=seconds_add)
+    delta = timedelta(seconds=int(timeframe_str.split()[0]))
   elif "min" in timeframe_str:
-    minutes_add = int(timeframe_str.split()[0])
-    delta = timedelta(minutes=minutes_add)
+    delta = timedelta(minutes=int(timeframe_str.split()[0]))
   else:
     delta = timedelta(minutes=1)
-
   exit_ph = now_ph + delta
   return now_ph.strftime("%I:%M:%S %p"), exit_ph.strftime("%I:%M:%S %p")
 
@@ -299,74 +295,31 @@ async def is_unauthorized(update: Update) -> bool:
   return False
 
 
-# MAIN MENU WITH YOUTUBE STRATEGY BUTTON
-async def show_main_menu(update_or_query, is_query=False):
-  keyboard = [
-      [
-          InlineKeyboardButton(
-              "📺 YOUTUBE STRATEGY (YT Pro Setups)",
-              callback_data="youtube_strategy_menu",
-          )
-      ],
-      [
-          InlineKeyboardButton(
-              "🔥 AUTO-SCAN BEST PAIR (Deriv Live AI)",
-              callback_data="auto_scan_pair",
-          )
-      ],
-      [
-          InlineKeyboardButton(
-              "🦅 Holly AI (Quant Probability Engine)",
-              callback_data="model_Holly AI Quant",
-          )
-      ],
-      [
-          InlineKeyboardButton(
-              "🕷️ TrendSpider AI (Multi-Trendline)",
-              callback_data="model_TrendSpider AI",
-          )
-      ],
-      [
-          InlineKeyboardButton(
-              "🤖 Tickeron AI (Pattern Odds Engine)",
-              callback_data="model_Tickeron AI Odds",
-          )
-      ],
-      [
-          InlineKeyboardButton(
-              "Google Gemini 2.0 Flash ⚡",
-              callback_data="model_Google Gemini 2.0 Flash",
-          )
-      ],
-      [
-          InlineKeyboardButton(
-              "Groq AI (DeepSeek R1) 🚀", callback_data="model_Groq DeepSeek R1"
-          )
-      ],
-      [
-          InlineKeyboardButton(
-              "📜 View History & Win Rate", callback_data="view_history"
-          )
-      ],
-  ]
-  reply_markup = InlineKeyboardMarkup(keyboard)
-  text = "🤖 *Select AI Engine or YouTube Strategy:*"
+def build_main_menu_keyboard():
+  return InlineKeyboardMarkup([
+      [InlineKeyboardButton("📺 YOUTUBE STRATEGY (YT Pro Setups)", callback_data="youtube_strategy_menu")],
+      [InlineKeyboardButton("🔥 AUTO-SCAN BEST PAIR (Deriv Live AI)", callback_data="auto_scan_pair")],
+      [InlineKeyboardButton("🦅 Holly AI (Quant Probability Engine)", callback_data="model_Holly AI Quant")],
+      [InlineKeyboardButton("🕷️ TrendSpider AI (Multi-Trendline)", callback_data="model_TrendSpider AI")],
+      [InlineKeyboardButton("🤖 Tickeron AI (Pattern Odds Engine)", callback_data="model_Tickeron AI Odds")],
+      [InlineKeyboardButton("Google Gemini 2.0 Flash ⚡", callback_data="model_Google Gemini 2.0 Flash")],
+      [InlineKeyboardButton("Groq AI (DeepSeek R1) 🚀", callback_data="model_Groq DeepSeek R1")],
+      [InlineKeyboardButton("📜 View History & Win Rate", callback_data="view_history")],
+  ])
 
+
+async def show_main_menu(update_or_query, is_query=False):
+  reply_markup = build_main_menu_keyboard()
+  text = "🤖 *Select AI Engine or YouTube Strategy:*"
   if is_query:
-    await update_or_query.edit_message_text(
-        text, reply_markup=reply_markup, parse_mode="Markdown"
-    )
+    await update_or_query.edit_message_text(text, reply_markup=reply_markup, parse_mode="Markdown")
   else:
-    await update_or_query.message.reply_text(
-        text, reply_markup=reply_markup, parse_mode="Markdown"
-    )
+    await update_or_query.message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown")
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
   if await is_unauthorized(update):
-    await update.message.reply_text(
-        "Access Denied! This is a private AI trading bot."
-    )
+    await update.message.reply_text("Access Denied! This is a private AI trading bot.")
     return
   await show_main_menu(update, is_query=False)
 
@@ -385,92 +338,21 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
   if data == "go_main_menu":
     try:
       await query.message.delete()
-    except:
+    except Exception:
       pass
     await context.bot.send_message(
         chat_id=chat_id,
         text="Select AI Engine or YouTube Strategy:",
-        reply_markup=InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton(
-                    "📺 YOUTUBE STRATEGY (YT Pro Setups)",
-                    callback_data="youtube_strategy_menu",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "🔥 AUTO-SCAN BEST PAIR (Deriv Live AI)",
-                    callback_data="auto_scan_pair",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "🦅 Holly AI (Quant Probability Engine)",
-                    callback_data="model_Holly AI Quant",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "🕷️ TrendSpider AI (Multi-Trendline)",
-                    callback_data="model_TrendSpider AI",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "🤖 Tickeron AI (Pattern Odds Engine)",
-                    callback_data="model_Tickeron AI Odds",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "Google Gemini 2.0 Flash ⚡",
-                    callback_data="model_Google Gemini 2.0 Flash",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "Groq AI (DeepSeek R1) 🚀",
-                    callback_data="model_Groq DeepSeek R1",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "📜 View History & Win Rate",
-                    callback_data="view_history",
-                )
-            ],
-        ]),
+        reply_markup=build_main_menu_keyboard(),
     )
 
-  # 📺 YOUTUBE STRATEGY SUB-MENU
   elif data == "youtube_strategy_menu":
     yt_keyboard = [
-        [
-            InlineKeyboardButton(
-                "📈 EMA 5/13 Crossover Strategy", callback_data="yt_ema_cross"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "📊 RSI + Stochastic Reversal", callback_data="yt_rsi_stoch"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "🕯️ Bollinger Band Rejection", callback_data="yt_bb_rejection"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "🚀 Heikin-Ashi Trend Momentum", callback_data="yt_ha_momentum"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "🔥 Auto-Scan Best YT Strategy",
-                callback_data="yt_auto_strategy",
-            )
-        ],
+        [InlineKeyboardButton("📈 EMA 5/13 Crossover Strategy", callback_data="yt_ema_cross")],
+        [InlineKeyboardButton("📊 RSI + Stochastic Reversal", callback_data="yt_rsi_stoch")],
+        [InlineKeyboardButton("🕯️ Bollinger Band Rejection", callback_data="yt_bb_rejection")],
+        [InlineKeyboardButton("🚀 Heikin-Ashi Trend Momentum", callback_data="yt_ha_momentum")],
+        [InlineKeyboardButton("🔥 Auto-Scan Best YT Strategy", callback_data="yt_auto_strategy")],
         [InlineKeyboardButton("🏠 Main Menu", callback_data="go_main_menu")],
     ]
     await query.edit_message_text(
@@ -489,8 +371,7 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     history = USER_HISTORY.get(user_id, [])
     if not history:
       history_text = (
-          "*SIGNAL HISTORY & WIN RATE*\n"
-          "━━━━━━━━━━━━━━━━━━━\n\n"
+          "*SIGNAL HISTORY & WIN RATE*\n━━━━━━━━━━━━━━━━━━━\n\n"
           "No saved signals yet! Generate a signal first."
       )
     else:
@@ -500,13 +381,11 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
       win_rate = (wins / total_recorded * 100) if total_recorded > 0 else 0
 
       history_text = (
-          "*SIGNAL HISTORY & WIN RATE*\n"
-          "━━━━━━━━━━━━━━━━━━━\n"
+          "*SIGNAL HISTORY & WIN RATE*\n━━━━━━━━━━━━━━━━━━━\n"
           f"Total Trades Recorded: {total_recorded}\n"
           f"Wins: {wins} | Losses: {losses}\n"
           f"Live Win Rate: *{win_rate:.1f}%*\n"
-          "━━━━━━━━━━━━━━━━━━━\n\n"
-          "*Recent Signals (Last 5):*\n\n"
+          "━━━━━━━━━━━━━━━━━━━\n\n*Recent Signals (Last 5):*\n\n"
       )
       for idx, item in enumerate(reversed(history[-5:]), 1):
         res_status = item.get("result", "PENDING ⏳")
@@ -515,29 +394,19 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"• Direction: {item['recommendation']}\n"
             f"• Price: {item.get('price', 'N/A')}\n"
             f"• Outcome: *{res_status}*\n"
-            f"━━━━━━━━━━━━━━━━━━━\n"
+            "━━━━━━━━━━━━━━━━━━━\n"
         )
 
     history_buttons = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                "🗑️ Clear History", callback_data="clear_history"
-            )
-        ],
+        [InlineKeyboardButton("🗑️ Clear History", callback_data="clear_history")],
         [InlineKeyboardButton("🏠 Main Menu", callback_data="go_main_menu")],
     ])
-    await query.edit_message_text(
-        history_text, reply_markup=history_buttons, parse_mode="Markdown"
-    )
+    await query.edit_message_text(history_text, reply_markup=history_buttons, parse_mode="Markdown")
 
   elif data == "clear_history":
     USER_HISTORY[user_id] = []
-    clear_buttons = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("🏠 Main Menu", callback_data="go_main_menu")]]
-    )
-    await query.edit_message_text(
-        "Signal History Cleared Successfully!", reply_markup=clear_buttons
-    )
+    clear_buttons = InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Main Menu", callback_data="go_main_menu")]])
+    await query.edit_message_text("Signal History Cleared Successfully!", reply_markup=clear_buttons)
 
   elif data in ["mark_win", "mark_loss"]:
     history = USER_HISTORY.get(user_id, [])
@@ -546,22 +415,10 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
       history[-1]["result"] = outcome
 
       recorded_buttons = InlineKeyboardMarkup([
+          [InlineKeyboardButton(f"🎉 Result Recorded: {outcome}", callback_data="already_recorded")],
+          [InlineKeyboardButton("🔄 Request Another Signal", callback_data="regen_auto_scan")],
           [
-              InlineKeyboardButton(
-                  f"🎉 Result Recorded: {outcome}",
-                  callback_data="already_recorded",
-              )
-          ],
-          [
-              InlineKeyboardButton(
-                  "🔄 Request Another Signal",
-                  callback_data="regen_auto_scan",
-              )
-          ],
-          [
-              InlineKeyboardButton(
-                  "📜 View History", callback_data="view_history"
-              ),
+              InlineKeyboardButton("📜 View History", callback_data="view_history"),
               InlineKeyboardButton("🏠 Main Menu", callback_data="go_main_menu"),
           ],
       ])
@@ -569,34 +426,32 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
       try:
         await query.edit_message_reply_markup(reply_markup=recorded_buttons)
       except Exception as e:
-        print(f"Markup update error: {e}")
+        logging.error(f"Markup update error: {e}")
 
   # SIGNAL GENERATOR
   elif (
-      data == "auto_scan_pair"
-      or data == "regen_auto_scan"
-      or data.startswith("yt_")
-      or data.startswith("time_")
+      data == "auto_scan_pair" or data == "regen_auto_scan"
+      or data.startswith("yt_") or data.startswith("time_")
       or data == "regen_signal"
   ):
-
     is_auto = "auto" in data or "yt_" in data
     if data.startswith("time_"):
       context.user_data["time"] = data.split("_")[1]
 
     time_val = (
-        context.user_data.get("time", "1 min")
-        if not is_auto
-        else random.choice(["1 min", "2 min"])
+        context.user_data.get("time", "1 min") if not is_auto
+        else context.user_data.get("time", "1 min")
     )
 
     active_pool = get_active_pairs_pool()
 
     if is_auto:
+      # Rank candidate pairs using each pair's real recorded win/loss bias
+      # (no more random.randint injected into the ranking).
       scored_pairs = []
       for p_cand in active_pool:
         bias_score, _ = analyze_adaptive_bias(user_id, p_cand)
-        scored_pairs.append((bias_score + random.randint(1, 10), p_cand))
+        scored_pairs.append((bias_score, p_cand))
       scored_pairs.sort(key=lambda x: x[0], reverse=True)
       pair = scored_pairs[0][1]
     else:
@@ -618,34 +473,63 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
       await query.edit_message_text(
-          f"Fetching {pair} Deriv Live Ticks...\n"
-          "[████████░░] 88%\n\n"
+          f"Fetching {pair} Deriv Live Ticks...\n[████████░░] 88%\n\n"
           f"• Running {strategy_title}...\n"
           "• Converting Candles to Heikin-Ashi...\n"
           "• Running Instant Backtest on Last 50 Candles..."
       )
-    except:
+    except Exception:
       pass
 
-    ha_closes, live_price, rsi_val, macd_status = await fetch_deriv_live_data(
-        pair
-    )
-    entry_time, exit_time = get_ph_timing(time_val)
+    ha_closes, live_price, rsi_val, macd_status = await fetch_deriv_live_data(pair)
 
+    # 🚫 NO FAKE SIGNALS: if live data isn't available, say so and stop.
+    if live_price is None or rsi_val is None:
+      try:
+        await query.message.delete()
+      except Exception:
+        pass
+      retry_buttons = InlineKeyboardMarkup([
+          [InlineKeyboardButton("🔄 Try Again", callback_data=data)],
+          [InlineKeyboardButton("🏠 Main Menu", callback_data="go_main_menu")],
+      ])
+      await context.bot.send_message(
+          chat_id=chat_id,
+          text=(
+              f"⚠️ *Could not fetch live data for {pair}.*\n\n"
+              "Deriv feed did not respond or returned no candles, so wala "
+              "akong ibibigay na signal — mali kung mag-imbento ako ng "
+              "numero. Subukan ulit o pumili ng ibang pair."
+          ),
+          reply_markup=retry_buttons,
+          parse_mode="Markdown",
+      )
+      return
+
+    entry_time, exit_time = get_ph_timing(time_val)
     is_buy_signal = rsi_val < 42
 
-    # INSTANT BACKTEST
-    setups_found, past_wins, past_losses, backtest_winrate = (
-        run_instant_backtest(ha_closes, is_buy=is_buy_signal)
-    )
+    backtest_result = run_instant_backtest(ha_closes, is_buy=is_buy_signal)
     bias_delta, adaptive_status_text = analyze_adaptive_bias(user_id, pair)
+
+    if backtest_result:
+      setups_found, past_wins, past_losses, backtest_winrate = backtest_result
+      backtest_text = (
+          f"• Historical Setups Found: {setups_found}\n"
+          f"• Past Wins: {past_wins} | Past Losses: {past_losses}\n"
+          f"• Backtest Win Rate: *{backtest_winrate}%* "
+          "(based on last 50 candles only — small sample, not a guarantee)"
+      )
+      strength_desc = f"{backtest_winrate}% (from backtest above)"
+    else:
+      backtest_text = "• Insufficient historical candles to run a valid backtest ⚠️"
+      strength_desc = "Not available (insufficient backtest data)"
 
     if is_buy_signal:
       action_type = "Buy ▲"
       dir_word = "BUY"
       banner_image = BUY_IMAGE_URL
       rsi_desc = f"Low ({rsi_val})"
-      macd_desc = "Buying pressure"
       ma_desc = "Support test (Heikin-Ashi Bullish)"
       sentiment_desc = "Upward pressure"
     else:
@@ -653,32 +537,27 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
       dir_word = "SELL"
       banner_image = SELL_IMAGE_URL
       rsi_desc = f"High ({rsi_val})"
-      macd_desc = "Selling pressure"
       ma_desc = "Resistance test (Heikin-Ashi Bearish)"
       sentiment_desc = "Downward pressure"
 
-    price_str = f"{live_price:.5f}" if live_price else "1.08520"
-    r1_str = f"{live_price + 0.00430:.5f}" if live_price else "1.08950"
-    s1_str = f"{live_price - 0.00120:.5f}" if live_price else "1.08400"
-    strength_num = min(98, max(75, random.randint(80, 90) + bias_delta))
+    volatility_desc = calculate_volatility_desc(ha_closes)
+    price_str = f"{live_price:.5f}"
+    r1_str = f"{live_price + 0.00430:.5f}"
+    s1_str = f"{live_price - 0.00120:.5f}"
 
     if user_id not in USER_HISTORY:
       USER_HISTORY[user_id] = []
 
     USER_HISTORY[user_id].append({
-        "pair": pair,
-        "timeframe": time_val,
+        "pair": pair, "timeframe": time_val,
         "recommendation": f"{dir_word} {action_type}",
-        "price": price_str,
-        "entry_time": entry_time,
-        "exit_time": exit_time,
-        "timestamp": entry_time,
-        "result": "PENDING ⏳",
+        "price": price_str, "entry_time": entry_time, "exit_time": exit_time,
+        "timestamp": entry_time, "result": "PENDING ⏳",
     })
 
     try:
       await query.message.delete()
-    except:
+    except Exception:
       pass
 
     bottom_buttons = InlineKeyboardMarkup([
@@ -686,18 +565,9 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("✅ WIN (Profit)", callback_data="mark_win"),
             InlineKeyboardButton("❌ LOSS (Lose)", callback_data="mark_loss"),
         ],
+        [InlineKeyboardButton("🔄 Request Another Signal", callback_data="regen_auto_scan" if is_auto else "regen_signal")],
         [
-            InlineKeyboardButton(
-                "🔄 Request Another Signal",
-                callback_data=(
-                    "regen_auto_scan" if is_auto else "regen_signal"
-                ),
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "📺 YT Strategies", callback_data="youtube_strategy_menu"
-            ),
+            InlineKeyboardButton("📺 YT Strategies", callback_data="youtube_strategy_menu"),
             InlineKeyboardButton("🏠 Main Menu", callback_data="go_main_menu"),
         ],
     ])
@@ -708,8 +578,7 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
 📺 *Strategy:* {strategy_title}
 
 📡 *Market info:*
-• Volatility: Above average
-• Asset strength by volume: 79%
+• Volatility: {volatility_desc}
 • Candlestick Type: *Heikin-Ashi (Smoothed)*
 • Sentiment: {sentiment_desc}
 
@@ -718,41 +587,35 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • Resistance (R1): {r1_str}
 • Support (S1): {s1_str}
 • RSI: {rsi_desc}
-• MACD: {macd_desc}
+• MACD: {macd_status}
 • Moving Average: {ma_desc}
 
-🧠 *Adaptive AI Status:*
+🧠 *Adaptive AI Status (based on your own recorded trades):*
 • {adaptive_status_text}
 
 🧪 *Instant Backtest (Last 50 HA Candles):*
-• Historical Setups Found: {setups_found}
-• Past Wins: {past_wins} | Past Losses: {past_losses}
-• Backtest Win Rate: *{backtest_winrate}%* (Verified Setup) ✅
+{backtest_text}
 
-🗿 *Signal strength:*
-• Strength: Strong ({strength_num}%)
-• Market conditions: Favorable
+🗿 *Signal confidence:*
+• {strength_desc}
 
 🕒 *Trade Timing (PH Standard Time):*
 • Entry Time: `{entry_time}` (Enter NOW!)
 • Exit Time: `{exit_time}`
+
+⚠️ OTC pairs on this feed are broker-generated synthetic indices, not real currency market data. Treat all signals as indicative only.
 """
 
     try:
       await context.bot.send_photo(
-          chat_id=chat_id,
-          photo=banner_image,
-          caption=final_caption,
-          reply_markup=bottom_buttons,
-          parse_mode="Markdown",
+          chat_id=chat_id, photo=banner_image, caption=final_caption,
+          reply_markup=bottom_buttons, parse_mode="Markdown",
       )
     except Exception as photo_err:
-      print(f"Photo send failed ({photo_err}), sending text fallback...")
+      logging.error(f"Photo send failed ({photo_err}), sending text fallback...")
       await context.bot.send_message(
-          chat_id=chat_id,
-          text=final_caption,
-          reply_markup=bottom_buttons,
-          parse_mode="Markdown",
+          chat_id=chat_id, text=final_caption,
+          reply_markup=bottom_buttons, parse_mode="Markdown",
       )
 
   elif data.startswith("model_"):
@@ -762,34 +625,18 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         InlineKeyboardButton("OTC Market", callback_data="mkt_OTC"),
     ]]
     await query.edit_message_text(
-        f"Selected AI Engine: {context.user_data['model']}\n\nSelect Market"
-        " Type:",
+        f"Selected AI Engine: {context.user_data['model']}\n\nSelect Market Type:",
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
   elif data.startswith("mkt_"):
     mkt_type = data.split("_")[1]
     context.user_data["market"] = mkt_type
-
     now_ph = datetime.datetime.now(ZoneInfo("Asia/Manila"))
-    raw_pairs = (
-        OTC_PAIRS
-        if (mkt_type == "OTC" or now_ph.weekday() >= 5)
-        else STOCK_PAIRS
-    )
+    raw_pairs = OTC_PAIRS if (mkt_type == "OTC" or now_ph.weekday() >= 5) else STOCK_PAIRS
 
-    keyboard = []
-    for row in raw_pairs:
-      keyboard.append([
-          InlineKeyboardButton(pair, callback_data=f"pair_{pair}")
-          for pair in row
-      ])
-
-    mkt_name = (
-        "Real / Stock Market"
-        if (mkt_type == "Stock" and now_ph.weekday() < 5)
-        else "OTC Market (Weekend Active)"
-    )
+    keyboard = [[InlineKeyboardButton(pair, callback_data=f"pair_{pair}") for pair in row] for row in raw_pairs]
+    mkt_name = "Real / Stock Market" if (mkt_type == "Stock" and now_ph.weekday() < 5) else "OTC Market (Weekend Active)"
     await query.edit_message_text(
         f"Market: {mkt_name}\n\nSelect Currency Pair:",
         reply_markup=InlineKeyboardMarkup(keyboard),
@@ -814,13 +661,17 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ],
     ]
     await query.edit_message_text(
-        f"Selected Pair: {context.user_data['pair']}\n\nSelect Expiration"
-        " Time:",
+        f"Selected Pair: {context.user_data['pair']}\n\nSelect Expiration Time:",
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
 
 def main():
+  if not TELEGRAM_TOKEN or not DERIV_API_TOKEN:
+    raise RuntimeError(
+        "Missing TELEGRAM_TOKEN or DERIV_API_TOKEN environment variables. "
+        "Set them in Railway's Variables tab before deploying."
+    )
   app = Application.builder().token(TELEGRAM_TOKEN).build()
   app.add_handler(CommandHandler("start", start))
   app.add_handler(CallbackQueryHandler(button_click))
