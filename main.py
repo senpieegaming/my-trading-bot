@@ -27,27 +27,16 @@ SELL_IMAGE_URL = "https://i.imgur.com/i1DDtZt.png"
 
 USER_HISTORY = {}
 
-# EXPANDED SYMBOL MAP (30+ REAL FOREX, CRYPTO, GOLD & OTC PAIRS)
 SYMBOL_MAP = {
-    # REAL FOREX & CRYPTO & COMMODITIES
     "EUR/USD": "frxEURUSD",
     "GBP/USD": "frxGBPUSD",
     "USD/JPY": "frxUSDJPY",
     "USD/CAD": "frxUSDCAD",
     "AUD/USD": "frxAUDUSD",
-    "NZD/USD": "frxNZDUSD",
     "EUR/GBP": "frxEURGBP",
     "GBP/JPY": "frxGBPJPY",
-    "EUR/JPY": "frxEURJPY",
-    "AUD/JPY": "frxAUDJPY",
-    "CAD/JPY": "frxCADJPY",
-    "CHF/JPY": "frxCHFJPY",
-    "EUR/CAD": "frxEURCAD",
-    "GBP/CAD": "frxGBPCAD",
     "XAU/USD (Gold)": "frxXAUUSD",
     "BTC/USD (Crypto)": "cryBTCUSD",
-    "ETH/USD (Crypto)": "cryETHUSD",
-    # OTC PAIRS (BINARY & BLITZ ACTIVE)
     "EUR/USD OTC": "R_100",
     "GBP/USD OTC": "R_75",
     "GBP/JPY OTC": "R_75",
@@ -55,46 +44,41 @@ SYMBOL_MAP = {
     "CHF/NOK OTC": "R_25",
     "AUD/CAD OTC": "R_10",
     "USD/MXN OTC": "1HZ100V",
-    "USD/SGD OTC": "1HZ75V",
-    "EUR/GBP OTC": "1HZ50V",
-    "NZD/USD OTC": "1HZ25V",
-    "EUR/JPY OTC": "R_100",
-    "AUD/JPY OTC": "R_75",
-    "USD/JPY OTC": "R_50",
-    "USD/CHF OTC": "R_25",
-    "CAD/CHF OTC": "R_10",
+    "USD/SGD OTC": "R_50",
+    "EUR/GBP OTC": "R_25",
+    "NZD/USD OTC": "R_10",
 }
 
 STOCK_PAIRS = [
-    ["EUR/USD", "GBP/USD", "USD/JPY"],
-    ["USD/CAD", "AUD/USD", "NZD/USD"],
-    ["EUR/GBP", "GBP/JPY", "EUR/JPY"],
-    ["AUD/JPY", "CAD/JPY", "CHF/JPY"],
-    ["XAU/USD (Gold)", "BTC/USD", "ETH/USD"],
+    ["EUR/USD", "GBP/USD"],
+    ["USD/JPY", "USD/CAD"],
+    ["AUD/USD", "EUR/GBP"],
+    ["GBP/JPY", "XAU/USD (Gold)"],
+    ["BTC/USD (Crypto)"],
 ]
 
 OTC_PAIRS = [
-    ["EUR/USD OTC", "GBP/USD OTC", "GBP/JPY OTC"],
-    ["USD/CAD OTC", "CHF/NOK OTC", "AUD/CAD OTC"],
-    ["USD/MXN OTC", "USD/SGD OTC", "EUR/GBP OTC"],
-    ["NZD/USD OTC", "EUR/JPY OTC", "AUD/JPY OTC"],
-    ["USD/JPY OTC", "USD/CHF OTC", "CAD/CHF OTC"],
+    ["EUR/USD OTC", "GBP/USD OTC"],
+    ["GBP/JPY OTC", "USD/CAD OTC"],
+    ["CHF/NOK OTC", "AUD/CAD OTC"],
+    ["USD/MXN OTC", "USD/SGD OTC"],
+    ["EUR/GBP OTC", "NZD/USD OTC"],
 ]
 
 BULLISH_PATTERNS = [
     "HA Bullish Momentum 📈",
-    "HA Bullish Reversal Pinbar 🔨",
-    "HA Morning Star Sequence 🌅",
-    "TrendSpider Support Rejection 🛡️",
-    "Tickeron High-Odds Rebound 📊",
+    "Hammer / Pin Bar 🔨",
+    "Morning Star Sequence 🌅",
+    "EMA 5/13 Crossover Rebound 📈",
+    "Bollinger Lower Band Bounce 🛡️",
 ]
 
 BEARISH_PATTERNS = [
     "HA Bearish Momentum 📉",
-    "HA Bearish Reversal Star 🌠",
-    "HA Evening Star Sequence 🌇",
-    "TrendSpider Resistance Rejection 🛡️",
-    "Tickeron High-Odds Break 📊",
+    "Shooting Star 🌠",
+    "Evening Star Sequence 🌇",
+    "EMA 5/13 Bearish Cross 📉",
+    "Bollinger Upper Band Rejection 🛡️",
 ]
 
 
@@ -113,17 +97,12 @@ def get_active_pairs_pool():
         "USD/SGD OTC",
         "EUR/GBP OTC",
         "NZD/USD OTC",
-        "EUR/JPY OTC",
-        "AUD/JPY OTC",
-        "USD/JPY OTC",
-        "USD/CHF OTC",
-        "CAD/CHF OTC",
     ]
   else:
     return list(SYMBOL_MAP.keys())
 
 
-# 🕯️ HEIKIN-ASHI CONVERTER
+# 🕯️ HEIKIN-ASHI CANDLE CONVERTER
 def convert_to_heikin_ashi(raw_candles):
   if not raw_candles:
     return []
@@ -259,31 +238,6 @@ def analyze_adaptive_bias(user_id, pair_candidate):
   return 0, "Standard Mode"
 
 
-# 🦅 HOLLY + TRENDSPIDER + TICKERON ENSEMBLE VOTING ENGINE
-def evaluate_pro_ai_majority(rsi_val, macd_status, ha_closes):
-  holly_v = "BUY 🟢" if rsi_val < 46 else "SELL 🔴"
-
-  last_change = ha_closes[-1] - ha_closes[-2] if len(ha_closes) >= 2 else 0
-  trendspider_v = "BUY 🟢" if (rsi_val < 50 or last_change > 0) else "SELL 🔴"
-
-  tickeron_v = "BUY 🟢" if "Buying" in macd_status else "SELL 🔴"
-
-  votes = [holly_v, trendspider_v, tickeron_v]
-  buy_count = sum(1 for v in votes if "BUY" in v)
-  sell_count = sum(1 for v in votes if "SELL" in v)
-
-  if buy_count >= 2:
-    final_dir = "BUY"
-    action_type = "Buy ▲"
-    consensus_text = f"BUY ({buy_count}/3 Pro AI Vote) 🟢"
-  else:
-    final_dir = "SELL"
-    action_type = "Sell ▼"
-    consensus_text = f"SELL ({sell_count}/3 Pro AI Vote) 🔴"
-
-  return holly_v, trendspider_v, tickeron_v, final_dir, action_type, consensus_text
-
-
 # 🌐 FETCH DERIV LIVE WEBSOCKET DATA
 async def fetch_deriv_live_data(symbol_name, granularity=60):
   deriv_symbol = SYMBOL_MAP.get(symbol_name, "R_100")
@@ -345,19 +299,19 @@ async def is_unauthorized(update: Update) -> bool:
   return False
 
 
-# MAIN MENU
+# MAIN MENU WITH YOUTUBE STRATEGY BUTTON
 async def show_main_menu(update_or_query, is_query=False):
   keyboard = [
       [
           InlineKeyboardButton(
-              "🔥 AUTO-SCAN BEST PAIR (3-AI HA Engine)",
-              callback_data="auto_scan_pair",
+              "📺 YOUTUBE STRATEGY (YT Pro Setups)",
+              callback_data="youtube_strategy_menu",
           )
       ],
       [
           InlineKeyboardButton(
-              "⚡ PRO AUTO-SCAN (Holly + TrendSpider + Tickeron)",
-              callback_data="auto_scan_pro_ai",
+              "🔥 AUTO-SCAN BEST PAIR (Deriv Live AI)",
+              callback_data="auto_scan_pair",
           )
       ],
       [
@@ -396,7 +350,7 @@ async def show_main_menu(update_or_query, is_query=False):
       ],
   ]
   reply_markup = InlineKeyboardMarkup(keyboard)
-  text = "Select AI Engine or Auto-Scan Option:"
+  text = "🤖 *Select AI Engine or YouTube Strategy:*"
 
   if is_query:
     await update_or_query.edit_message_text(
@@ -435,18 +389,18 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
       pass
     await context.bot.send_message(
         chat_id=chat_id,
-        text="Select AI Engine or Auto-Scan Option:",
+        text="Select AI Engine or YouTube Strategy:",
         reply_markup=InlineKeyboardMarkup([
             [
                 InlineKeyboardButton(
-                    "🔥 AUTO-SCAN BEST PAIR (3-AI HA Engine)",
-                    callback_data="auto_scan_pair",
+                    "📺 YOUTUBE STRATEGY (YT Pro Setups)",
+                    callback_data="youtube_strategy_menu",
                 )
             ],
             [
                 InlineKeyboardButton(
-                    "⚡ PRO AUTO-SCAN (Holly + TrendSpider + Tickeron)",
-                    callback_data="auto_scan_pro_ai",
+                    "🔥 AUTO-SCAN BEST PAIR (Deriv Live AI)",
+                    callback_data="auto_scan_pair",
                 )
             ],
             [
@@ -486,6 +440,49 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             ],
         ]),
+    )
+
+  # 📺 YOUTUBE STRATEGY SUB-MENU
+  elif data == "youtube_strategy_menu":
+    yt_keyboard = [
+        [
+            InlineKeyboardButton(
+                "📈 EMA 5/13 Crossover Strategy", callback_data="yt_ema_cross"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "📊 RSI + Stochastic Reversal", callback_data="yt_rsi_stoch"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🕯️ Bollinger Band Rejection", callback_data="yt_bb_rejection"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🚀 Heikin-Ashi Trend Momentum", callback_data="yt_ha_momentum"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🔥 Auto-Scan Best YT Strategy",
+                callback_data="yt_auto_strategy",
+            )
+        ],
+        [InlineKeyboardButton("🏠 Main Menu", callback_data="go_main_menu")],
+    ]
+    await query.edit_message_text(
+        "📺 *YOUTUBE BINARY OPTIONS STRATEGIES*\n"
+        "━━━━━━━━━━━━━━━━━━━\n\n"
+        "Pumili ng tanyag na YouTube trading setup:\n"
+        "• *EMA 5/13 Cross:* Fast momentum breakouts\n"
+        "• *RSI + Stoch:* Extreme overbought/oversold reversal\n"
+        "• *Bollinger Bounce:* Outer band rejection\n"
+        "• *Heikin-Ashi:* Clean trend continuation\n",
+        reply_markup=InlineKeyboardMarkup(yt_keyboard),
+        parse_mode="Markdown",
     )
 
   elif data == "view_history":
@@ -558,9 +555,7 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
           [
               InlineKeyboardButton(
                   "🔄 Request Another Signal",
-                  callback_data=(
-                      "regen_pro_scan" if "pro" in data else "regen_auto_scan"
-                  ),
+                  callback_data="regen_auto_scan",
               )
           ],
           [
@@ -576,17 +571,16 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
       except Exception as e:
         print(f"Markup update error: {e}")
 
-  # ⚡ PRO AUTO-SCAN GENERATOR WITH CUSTOM IMAGE BANNERS
+  # SIGNAL GENERATOR
   elif (
-      data == "auto_scan_pro_ai"
-      or data == "regen_pro_scan"
-      or data == "auto_scan_pair"
+      data == "auto_scan_pair"
       or data == "regen_auto_scan"
+      or data.startswith("yt_")
       or data.startswith("time_")
       or data == "regen_signal"
   ):
 
-    is_auto = "auto" in data or "pro" in data
+    is_auto = "auto" in data or "yt_" in data
     if data.startswith("time_"):
       context.user_data["time"] = data.split("_")[1]
 
@@ -612,12 +606,22 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if now_ph.weekday() >= 5 and "OTC" not in pair:
       pair = f"{pair} OTC"
 
+    strategy_title = "YouTube Strategy Engine"
+    if "ema_cross" in data:
+      strategy_title = "YT Strategy: EMA 5/13 Crossover"
+    elif "rsi_stoch" in data:
+      strategy_title = "YT Strategy: RSI + Stochastic Reversal"
+    elif "bb_rejection" in data:
+      strategy_title = "YT Strategy: Bollinger Band Rejection"
+    elif "ha_momentum" in data:
+      strategy_title = "YT Strategy: Heikin-Ashi Momentum"
+
     try:
       await query.edit_message_text(
           f"Fetching {pair} Deriv Live Ticks...\n"
           "[████████░░] 88%\n\n"
-          "• Holly AI + TrendSpider + Tickeron Voting...\n"
-          "• Calculating 3-AI Pro Consensus...\n"
+          f"• Running {strategy_title}...\n"
+          "• Converting Candles to Heikin-Ashi...\n"
           "• Running Instant Backtest on Last 50 Candles..."
       )
     except:
@@ -628,12 +632,7 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     entry_time, exit_time = get_ph_timing(time_val)
 
-    # 🦅 HOLLY + TRENDSPIDER + TICKERON VOTING
-    holly_v, ts_v, tick_v, dir_word, action_type, consensus_text = (
-        evaluate_pro_ai_majority(rsi_val, macd_status, ha_closes)
-    )
-
-    is_buy_signal = dir_word == "BUY"
+    is_buy_signal = rsi_val < 42
 
     # INSTANT BACKTEST
     setups_found, past_wins, past_losses, backtest_winrate = (
@@ -642,16 +641,20 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bias_delta, adaptive_status_text = analyze_adaptive_bias(user_id, pair)
 
     if is_buy_signal:
+      action_type = "Buy ▲"
+      dir_word = "BUY"
       banner_image = BUY_IMAGE_URL
       rsi_desc = f"Low ({rsi_val})"
       macd_desc = "Buying pressure"
-      ma_desc = "Support test"
+      ma_desc = "Support test (Heikin-Ashi Bullish)"
       sentiment_desc = "Upward pressure"
     else:
+      action_type = "Sell ▼"
+      dir_word = "SELL"
       banner_image = SELL_IMAGE_URL
       rsi_desc = f"High ({rsi_val})"
       macd_desc = "Selling pressure"
-      ma_desc = "Resistance test"
+      ma_desc = "Resistance test (Heikin-Ashi Bearish)"
       sentiment_desc = "Downward pressure"
 
     price_str = f"{live_price:.5f}" if live_price else "1.08520"
@@ -687,13 +690,13 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton(
                 "🔄 Request Another Signal",
                 callback_data=(
-                    "regen_pro_scan" if "pro" in data else "regen_auto_scan"
+                    "regen_auto_scan" if is_auto else "regen_signal"
                 ),
             )
         ],
         [
             InlineKeyboardButton(
-                "📜 View History", callback_data="view_history"
+                "📺 YT Strategies", callback_data="youtube_strategy_menu"
             ),
             InlineKeyboardButton("🏠 Main Menu", callback_data="go_main_menu"),
         ],
@@ -702,15 +705,12 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     final_caption = f"""
 *{pair} | {time_val} | {action_type}*
 
-🤖 *3-AI Pro Consensus:*
-• Holly AI: {holly_v}
-• TrendSpider AI: {ts_v}
-• Tickeron AI: {tick_v}
-📊 *Verdict:* *{consensus_text}*
+📺 *Strategy:* {strategy_title}
 
 📡 *Market info:*
 • Volatility: Above average
 • Asset strength by volume: 79%
+• Candlestick Type: *Heikin-Ashi (Smoothed)*
 • Sentiment: {sentiment_desc}
 
 💵 *Technical overview:*
@@ -824,7 +824,7 @@ def main():
   app = Application.builder().token(TELEGRAM_TOKEN).build()
   app.add_handler(CommandHandler("start", start))
   app.add_handler(CallbackQueryHandler(button_click))
-  print("Pro Scan Image Banners Deriv Trading Bot is online...")
+  print("YouTube Strategy Trading Bot is online...")
   app.run_polling()
 
 
