@@ -123,9 +123,28 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         💡 *Rationale:* [Short 1-sentence reason for the trade recommendation]
         """
 
-    # 5. Call Gemini Vision Model
-    model = genai.GenerativeModel("gemini-1.5-flash")
-    response = model.generate_content([prompt, image])
+    # 5. CALL GEMINI VISION WITH AUTO-ROTATION FALLBACK
+    models_to_try = [
+        "gemini-2.0-flash",
+        "gemini-1.5-flash-latest",
+        "gemini-1.5-flash",
+        "gemini-1.5-pro-latest",
+    ]
+    response = None
+    last_err = None
+
+    for m_name in models_to_try:
+      try:
+        model = genai.GenerativeModel(m_name)
+        response = model.generate_content([prompt, image])
+        if response and response.text:
+          break
+      except Exception as err:
+        last_err = err
+        continue
+
+    if not response or not response.text:
+      raise Exception(f"Gemini API Error: {last_err}")
 
     # 6. Reply with AI Vision Analysis
     await status_msg.delete()
@@ -144,9 +163,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
   if not TELEGRAM_TOKEN:
-    print(
-        "Error: TELEGRAM_TOKEN is missing! Set it in Railway Variables or code."
-    )
+    print("Error: TELEGRAM_TOKEN is missing!")
     return
   app = Application.builder().token(TELEGRAM_TOKEN).build()
   app.add_handler(CommandHandler("start", start))
