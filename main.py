@@ -23,7 +23,7 @@ client = OpenAI(
 # Model Choice (Pwede mo palitan depende sa gusto mo)
 # "google/gemini-flash-1.5" - Mabilis at napakamura
 # "openai/gpt-4o-mini" - Mas accurate sa pagbasa ng maliit na text
-MODEL_NAME = "google/gemini-flash-1.5"
+MODEL_NAME = "nvidia/nemotron-nano-12b-v2-vl:free"
 
 # Timezone para sa Pilipinas
 MANILA_TZ = pytz.timezone("Asia/Manila")
