@@ -1,11 +1,11 @@
+import base64
 import datetime
 from datetime import timedelta
 import io
 import logging
 import os
 from zoneinfo import ZoneInfo
-import google.generativeai as genai
-from PIL import Image
+import requests
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -16,13 +16,11 @@ from telegram.ext import (
 )
 
 # 🔒 LIGTAS NA CONFIGURATION (KUKUNIN SA RAILWAY VARIABLES TAB):
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+TELEGRAM_TOKEN = os.getenv(
+    "TELEGRAM_TOKEN", "8743360999:AAGoyTpnZNtcOa414MmACkzesVUYkGxELh4"
+)
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 ALLOWED_USER_ID = 8434566946
-
-# Configure Gemini AI
-if GEMINI_API_KEY:
-  genai.configure(api_key=GEMINI_API_KEY)
 
 
 def get_ph_time():
@@ -45,15 +43,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return
 
   welcome_text = """
-📸 *AI VISION TRADING BOT IS READY!*
+📸 *OPENROUTER.AI VISION TRADING BOT IS READY!*
 ━━━━━━━━━━━━━━━━━━━
 Mag-send lang ng *Screenshot ng Trading Chart* mo (IQ Option, PocketOption, o Deriv).
 
-🔍 *Babasahin ng Gemini Vision AI ang:*
-1. Currency Pair Name & Market Type
+🤖 *OpenRouter AI (Gemini 2.0 / Llama Vision) Engine:*
+1. Asset/Pair Name & Market Type (OTC/Real)
 2. Chart Timeframe (1m, 5m, etc.)
-3. Candlestick Patterns, Support/Resistance & Trends
-4. Final Signal: *UP 🟢 (BUY)* o *DOWN 🔴 (SELL)*
+3. Technical Patterns & Trend Analysis
+4. Final Recommendation: *UP 🟢 (BUY)* o *DOWN 🔴 (SELL)*
 5. Exact Philippine Entry & Exit Timing!
 
 👉 *I-send na ang Screenshot ng Chart mo ngayon!*
@@ -61,16 +59,16 @@ Mag-send lang ng *Screenshot ng Trading Chart* mo (IQ Option, PocketOption, o De
   await update.message.reply_text(welcome_text, parse_mode="Markdown")
 
 
-# 📸 PHOTO HANDLER: BABASAHIN ANG SCREENSHOT NG CHART GAMIT ANG GEMINI VISION AI
+# 📸 PHOTO HANDLER: OPENROUTER AI VISION CHART ANALYSIS
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
   if await is_unauthorized(update):
     return
 
   status_msg = await update.message.reply_text(
       "📸 *Screenshot Received!*\n"
-      "⏳ *Gemini Vision AI is analyzing your chart screenshot...*\n"
+      "⏳ *OpenRouter AI Vision is analyzing your chart...*\n"
       "• Reading Pair Name & Timeframe...\n"
-      "• Scanning Candlesticks, Support/Resistance & Trend...",
+      "• Scanning Candlesticks & Technical Trends...",
       parse_mode="Markdown",
   )
 
@@ -79,16 +77,16 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo_file = await update.message.photo[-1].get_file()
     photo_bytes = await photo_file.download_as_bytearray()
 
-    # 2. Open image with PIL
-    image = Image.open(io.BytesIO(photo_bytes))
+    # 2. Encode to Base64
+    base64_image = base64.b64encode(photo_bytes).decode("utf-8")
 
     # 3. Calculate Current PH Time
     now_ph = get_ph_time()
     entry_str = now_ph.strftime("%I:%M:%S %p")
     exit_1m = (now_ph + timedelta(minutes=1)).strftime("%I:%M:%S %p")
 
-    # 4. Prompt for Gemini Vision Model
-    prompt = f"""
+    # 4. Prompt for OpenRouter AI
+    prompt_text = f"""
         You are an elite, highly accurate Binary Options AI Trader.
         Analyze this trading chart screenshot in detail.
 
@@ -123,39 +121,65 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         💡 *Rationale:* [Short 1-sentence reason for the trade recommendation]
         """
 
-    # 5. CALL GEMINI VISION WITH AUTO-ROTATION FALLBACK
+    # 5. OpenRouter Vision Models to try
     models_to_try = [
-        "gemini-2.0-flash",
-        "gemini-1.5-flash-latest",
-        "gemini-1.5-flash",
-        "gemini-1.5-pro-latest",
+        "google/gemini-2.0-flash-001",
+        "meta-llama/llama-3.2-11b-vision-instruct",
+        "openai/gpt-4o-mini",
     ]
-    response = None
-    last_err = None
 
-    for m_name in models_to_try:
-      try:
-        model = genai.GenerativeModel(m_name)
-        response = model.generate_content([prompt, image])
-        if response and response.text:
-          break
-      except Exception as err:
-        last_err = err
-        continue
+    analysis_result = None
+    last_error = None
 
-    if not response or not response.text:
-      raise Exception(f"Gemini API Error: {last_err}")
+    for model_id in models_to_try:
+      payload = {
+          "model": model_id,
+          "messages": [{
+              "role": "user",
+              "content": [
+                  {"type": "text", "text": prompt_text},
+                  {
+                      "type": "image_url",
+                      "image_url": {
+                          "url": f"data:image/jpeg;base64,{base64_image}"
+                      },
+                  },
+              ],
+          }],
+      }
 
-    # 6. Reply with AI Vision Analysis
+      res = requests.post(
+          "https://openrouter.ai/api/v1/chat/completions",
+          headers={
+              "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+              "Content-Type": "application/json",
+          },
+          json=payload,
+          timeout=30,
+      )
+
+      if res.status_code == 200:
+        res_json = res.json()
+        analysis_result = res_json["choices"][0]["message"]["content"]
+        break
+      else:
+        last_error = f"Status {res.status_code}: {res.text}"
+
+    if not analysis_result:
+      raise Exception(
+          f"OpenRouter Error: {last_error or 'Failed to get response'}"
+      )
+
+    # 6. Reply with OpenRouter AI Vision Analysis
     await status_msg.delete()
-    await update.message.reply_text(response.text, parse_mode="Markdown")
+    await update.message.reply_text(analysis_result, parse_mode="Markdown")
 
   except Exception as e:
-    logging.error(f"Vision Error: {e}")
+    logging.error(f"OpenRouter Error: {e}")
     await status_msg.edit_text(
         "❌ *Analysis Failed!*\n\n"
-        "Siguraduhing malinaw ang screenshot ng chart at nai-set mo ang "
-        "totoong `TELEGRAM_TOKEN` at `GEMINI_API_KEY` sa Railway Variables.\n\n"
+        "Siguraduhing nai-set mo ang `OPENROUTER_API_KEY` sa Railway "
+        "Variables.\n\n"
         f"Details: `{e}`",
         parse_mode="Markdown",
     )
@@ -168,7 +192,7 @@ def main():
   app = Application.builder().token(TELEGRAM_TOKEN).build()
   app.add_handler(CommandHandler("start", start))
   app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-  print("AI Vision Chart Reading Trading Bot is online...")
+  print("OpenRouter AI Vision Trading Bot is online...")
   app.run_polling()
 
 
