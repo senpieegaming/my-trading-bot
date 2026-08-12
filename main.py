@@ -15,12 +15,10 @@ from telegram.ext import (
     filters,
 )
 
-# 🔑 CONFIGURATION:
-TELEGRAM_TOKEN = "8743360999:AAGoyTpnZNtcOa414MmACkzesVUYkGxELh4"
-ALLOWED_USER_ID = 8434566946
-
-# 🔒 LIGTAS NA ENVIRONMENT VARIABLE (KUKUNIN NI RAILWAY AUTOMATIC):
+# 🔒 LIGTAS NA CONFIGURATION (KUKUNIN SA RAILWAY VARIABLES TAB):
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+ALLOWED_USER_ID = 8434566946
 
 # Configure Gemini AI
 if GEMINI_API_KEY:
@@ -138,13 +136,18 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await status_msg.edit_text(
         "❌ *Analysis Failed!*\n\n"
         "Siguraduhing malinaw ang screenshot ng chart at nai-set mo ang "
-        "totoong `GEMINI_API_KEY` sa Railway Variables.\n\n"
+        "totoong `TELEGRAM_TOKEN` at `GEMINI_API_KEY` sa Railway Variables.\n\n"
         f"Details: `{e}`",
         parse_mode="Markdown",
     )
 
 
 def main():
+  if not TELEGRAM_TOKEN:
+    print(
+        "Error: TELEGRAM_TOKEN is missing! Set it in Railway Variables or code."
+    )
+    return
   app = Application.builder().token(TELEGRAM_TOKEN).build()
   app.add_handler(CommandHandler("start", start))
   app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
