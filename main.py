@@ -1,216 +1,154 @@
-import base64
 import datetime
+from datetime import timedelta
+import io
 import logging
 import os
-import re
 from zoneinfo import ZoneInfo
-
-import requests
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+import google.generativeai as genai
+from PIL import Image
+from telegram import Update
 from telegram.ext import (
     Application,
-    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     MessageHandler,
     filters,
 )
 
-logging.basicConfig(level=logging.INFO)
+# 🔑 CONFIGURATION:
+TELEGRAM_TOKEN = "8743360999:AAGoyTpnZNtcOa414MmACkzesVUYkGxELh4"
+ALLOWED_USER_ID = 8434566946
 
-# 🔑 CONFIGURATION — all from environment variables.
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
-ALLOWED_USER_ID = int(os.environ.get("ALLOWED_USER_ID", "0"))
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-# Current GA Gemini model as of Aug 2026 that supports image input.
-# If Google renames/retires this model later, change it here.
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
-GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+# 🔒 LIGTAS NA ENVIRONMENT VARIABLE (KUKUNIN NI RAILWAY AUTOMATIC):
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
-USER_HISTORY = {}
+# Configure Gemini AI
+if GEMINI_API_KEY:
+  genai.configure(api_key=GEMINI_API_KEY)
 
-ANALYSIS_PROMPT = """You are assisting with manual technical analysis of a trading chart screenshot from the IQ Option platform.
 
-Look at what is visibly present in this image:
-- Candlestick patterns, visible trend direction, recent price action
-- Any visible indicators (RSI, MACD, Bollinger Bands, moving averages, etc. — only if actually shown on screen)
-- The candle timeframe shown on screen (e.g. a "1m" label means each candle = 1 minute)
-- Any visible expiration/entry time field or countdown timer already set in the app UI
-
-Respond in EXACTLY this format, nothing else:
-
-DIRECTION: BUY or SELL or NEUTRAL
-CONFIDENCE: Low, Medium, or High
-CURRENT EXPIRATION SET: state the expiration time/duration visible in the app UI if you can read it (e.g. "21:33" or "1 minute"), or "Not visible in screenshot" if there is none shown or it can't be read
-SUGGESTED EXPIRATION: your own recommended expiration duration (e.g. "1 minute", "3 minutes", "5 minutes"), based on the candle timeframe visible and how fast price is moving in the recent candles
-REASONING: 2-4 sentences explaining specifically what you see in the image that supports the direction AND why you suggest that expiration duration.
-
-Rules:
-- Do NOT invent a specific win-rate percentage or claim certainty.
-- If the chart is unclear, cropped, or doesn't show enough candles to judge, say DIRECTION: NEUTRAL and explain why in REASONING.
-- For SUGGESTED EXPIRATION: as a general rule of thumb, expiration should roughly match or be a small multiple (1-5x) of the visible candle timeframe — e.g. on a 1-minute candle chart, 1-3 minute expirations align with what you can actually read from the chart; a 15-minute expiration on a 1-minute chart is mostly guesswork. Say so if the requested/visible expiration looks mismatched with the candle timeframe.
-- This is pattern-recognition assistance only, not a guaranteed prediction.
-"""
+def get_ph_time():
+  return datetime.datetime.now(ZoneInfo("Asia/Manila"))
 
 
 async def is_unauthorized(update: Update) -> bool:
-  return ALLOWED_USER_ID != 0 and update.effective_user.id != ALLOWED_USER_ID
-
-
-def main_menu_keyboard():
-  return InlineKeyboardMarkup([
-      [InlineKeyboardButton("📜 View History", callback_data="view_history")],
-  ])
+  user_id = update.effective_user.id
+  if ALLOWED_USER_ID != 0 and user_id != ALLOWED_USER_ID:
+    return True
+  return False
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
   if await is_unauthorized(update):
-    await update.message.reply_text("Access Denied! This is a private bot.")
+    await update.message.reply_text(
+        "⛔ *Access Denied!* This is a private AI trading bot.",
+        parse_mode="Markdown",
+    )
     return
-  await update.message.reply_text(
-      "🤖 *IQ Option Chart Vision Bot*\n\n"
-      "Magpadala ka lang ng screenshot ng chart mo (kasama kung ano man "
-      "indicators na naka-display, e.g. RSI/MACD/Bollinger) at aanalyze "
-      "ko base sa totoong nakikita sa image.\n\n"
-      "Tip: mas malinaw ang screenshot, mas maganda ang analysis. Siguraduhing "
-      "makikita yung huling 15-20 candles.",
-      reply_markup=main_menu_keyboard(),
-      parse_mode="Markdown",
-  )
+
+  welcome_text = """
+📸 *AI VISION TRADING BOT IS READY!*
+━━━━━━━━━━━━━━━━━━━
+Mag-send lang ng *Screenshot ng Trading Chart* mo (IQ Option, PocketOption, o Deriv).
+
+🔍 *Babasahin ng Gemini Vision AI ang:*
+1. Currency Pair Name & Market Type
+2. Chart Timeframe (1m, 5m, etc.)
+3. Candlestick Patterns, Support/Resistance & Trends
+4. Final Signal: *UP 🟢 (BUY)* o *DOWN 🔴 (SELL)*
+5. Exact Philippine Entry & Exit Timing!
+
+👉 *I-send na ang Screenshot ng Chart mo ngayon!*
+"""
+  await update.message.reply_text(welcome_text, parse_mode="Markdown")
 
 
-def call_gemini_vision(image_bytes: bytes, mime_type: str = "image/jpeg"):
-  """Calls Gemini API with the image. Returns raw text or None on failure."""
-  if not GEMINI_API_KEY:
-    return None, "Missing GEMINI_API_KEY environment variable."
-
-  b64_data = base64.b64encode(image_bytes).decode("utf-8")
-  payload = {
-      "contents": [{
-          "parts": [
-              {"text": ANALYSIS_PROMPT},
-              {"inline_data": {"mime_type": mime_type, "data": b64_data}},
-          ]
-      }]
-  }
-  headers = {"Content-Type": "application/json", "x-goog-api-key": GEMINI_API_KEY}
-
-  try:
-    resp = requests.post(GEMINI_URL, headers=headers, json=payload, timeout=30)
-    if resp.status_code != 200:
-      return None, f"Gemini API error {resp.status_code}: {resp.text[:300]}"
-    data = resp.json()
-    candidates = data.get("candidates", [])
-    if not candidates:
-      return None, "Gemini returned no candidates (possibly blocked or empty response)."
-    parts = candidates[0].get("content", {}).get("parts", [])
-    text = "".join(p.get("text", "") for p in parts)
-    if not text.strip():
-      return None, "Gemini returned an empty response."
-    return text.strip(), None
-  except requests.exceptions.RequestException as e:
-    return None, f"Request to Gemini failed: {e}"
-
-
-def parse_direction(analysis_text: str) -> str:
-  match = re.search(r"DIRECTION:\s*(BUY|SELL|NEUTRAL)", analysis_text, re.IGNORECASE)
-  return match.group(1).upper() if match else "UNKNOWN"
-
-
+# 📸 PHOTO HANDLER: BABASAHIN ANG SCREENSHOT NG CHART GAMIT ANG GEMINI VISION AI
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
   if await is_unauthorized(update):
     return
 
-  user_id = update.effective_user.id
-  chat_id = update.effective_chat.id
-
-  status_msg = await update.message.reply_text("📸 Nakuha yung screenshot, ina-analyze ni Gemini...")
-
-  photo = update.message.photo[-1]  # highest resolution
-  tg_file = await context.bot.get_file(photo.file_id)
-  image_bytearray = await tg_file.download_as_bytearray()
-  image_bytes = bytes(image_bytearray)
-
-  analysis_text, error = call_gemini_vision(image_bytes)
-
-  if error:
-    await status_msg.edit_text(
-        f"⚠️ Hindi na-analyze yung chart.\n\n{error}\n\nSubukan ulit."
-    )
-    return
-
-  direction = parse_direction(analysis_text)
-  now_ph = datetime.datetime.now(ZoneInfo("Asia/Manila")).strftime("%I:%M:%S %p")
-
-  if user_id not in USER_HISTORY:
-    USER_HISTORY[user_id] = []
-  USER_HISTORY[user_id].append({
-      "direction": direction,
-      "time": now_ph,
-      "result": "PENDING ⏳",
-  })
-
-  buttons = InlineKeyboardMarkup([
-      [
-          InlineKeyboardButton("✅ WIN", callback_data="mark_win"),
-          InlineKeyboardButton("❌ LOSS", callback_data="mark_loss"),
-      ],
-      [InlineKeyboardButton("📜 View History", callback_data="view_history")],
-  ])
-
-  final_text = (
-      f"{analysis_text}\n\n"
-      f"🕒 {now_ph} (PH)\n\n"
-      "⚠️ Pattern-based lang ito, hindi guaranteed prediction. Ikaw pa rin "
-      "ang huling desisyon bago mag-trade."
+  status_msg = await update.message.reply_text(
+      "📸 *Screenshot Received!*\n"
+      "⏳ *Gemini Vision AI is analyzing your chart screenshot...*\n"
+      "• Reading Pair Name & Timeframe...\n"
+      "• Scanning Candlesticks, Support/Resistance & Trend...",
+      parse_mode="Markdown",
   )
 
-  await status_msg.edit_text(final_text, reply_markup=buttons)
+  try:
+    # 1. Download photo from Telegram
+    photo_file = await update.message.photo[-1].get_file()
+    photo_bytes = await photo_file.download_as_bytearray()
 
+    # 2. Open image with PIL
+    image = Image.open(io.BytesIO(photo_bytes))
 
-async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
-  query = update.callback_query
-  await query.answer()
-  if await is_unauthorized(update):
-    return
+    # 3. Calculate Current PH Time
+    now_ph = get_ph_time()
+    entry_str = now_ph.strftime("%I:%M:%S %p")
+    exit_1m = (now_ph + timedelta(minutes=1)).strftime("%I:%M:%S %p")
 
-  data = query.data
-  user_id = update.effective_user.id
+    # 4. Prompt for Gemini Vision Model
+    prompt = f"""
+        You are an elite, highly accurate Binary Options AI Trader.
+        Analyze this trading chart screenshot in detail.
 
-  if data == "view_history":
-    history = USER_HISTORY.get(user_id, [])
-    if not history:
-      text = "Wala pang saved analysis. Magpadala ka ng screenshot."
-    else:
-      wins = sum(1 for h in history if "WIN" in h.get("result", ""))
-      losses = sum(1 for h in history if "LOSS" in h.get("result", ""))
-      total = wins + losses
-      wr = (wins / total * 100) if total else 0
-      text = f"Total: {total} | Wins: {wins} | Losses: {losses} | Win rate: {wr:.1f}%\n\n"
-      for i, h in enumerate(reversed(history[-5:]), 1):
-        text += f"{i}. {h['direction']} ({h['time']}) — {h.get('result', 'PENDING')}\n"
-    await query.edit_message_text(text, reply_markup=main_menu_keyboard())
+        Extract and analyze the following from the image:
+        1. Asset / Currency Pair Name (e.g. EUR/USD OTC, GBP/USD, Volatility 100, etc.)
+        2. Chart Timeframe visible (e.g. 1m, 5m, 15s)
+        3. Technical Analysis (Identify Support/Resistance levels, Candlestick Formation like Hammer/Doji/Engulfing, RSI/MACD if visible, and overall Trend Direction).
+        4. Determine the highest probability trade recommendation: UP (BUY/CALL) or DOWN (SELL/PUT).
+        5. Provide a Confidence Score percentage (e.g. 88%).
 
-  elif data in ("mark_win", "mark_loss"):
-    history = USER_HISTORY.get(user_id, [])
-    if history:
-      history[-1]["result"] = "WIN 🟢" if data == "mark_win" else "LOSS 🔴"
-      await query.answer("Recorded!", show_alert=True)
+        Current Philippine Standard Time is {entry_str}.
+
+        Format your final response in a clean, professional, markdown format like this:
+
+        🎯 *AI VISION CHART ANALYSIS*
+        ━━━━━━━━━━━━━━━━━━━
+        📈 *Detected Pair:* [Extracted Pair Name]
+        ⏱️ *Detected Timeframe:* [Extracted Timeframe]
+        🔥 *RECOMMENDATION:* [UP 🟢 (BUY / CALL) OR DOWN 🔴 (SELL / PUT)]
+
+        🕒 *TRADE TIMING (PH Standard Time):*
+        📍 *ENTRY TIME:* `{entry_str}` *(Enter NOW!)*
+        🏁 *EXIT TIME:*  `{exit_1m}` *(For 1-Min Expiry)*
+
+        📊 *Chart Analysis:*
+        • Trend: [Uptrend / Downtrend / Sideways]
+        • Candlestick Pattern: [Pattern Name]
+        • Key Zone: [At Support / At Resistance]
+        • Indicators: [RSI/MACD status if visible]
+
+        💪 *Confidence Score:* [Score]%
+        💡 *Rationale:* [Short 1-sentence reason for the trade recommendation]
+        """
+
+    # 5. Call Gemini Vision Model
+    model = genai.GenerativeModel("gemini-1.5-flash")
+    response = model.generate_content([prompt, image])
+
+    # 6. Reply with AI Vision Analysis
+    await status_msg.delete()
+    await update.message.reply_text(response.text, parse_mode="Markdown")
+
+  except Exception as e:
+    logging.error(f"Vision Error: {e}")
+    await status_msg.edit_text(
+        "❌ *Analysis Failed!*\n\n"
+        "Siguraduhing malinaw ang screenshot ng chart at nai-set mo ang "
+        "totoong `GEMINI_API_KEY` sa Railway Variables.\n\n"
+        f"Details: `{e}`",
+        parse_mode="Markdown",
+    )
 
 
 def main():
-  missing = [n for n, v in [
-      ("TELEGRAM_TOKEN", TELEGRAM_TOKEN),
-      ("GEMINI_API_KEY", GEMINI_API_KEY),
-  ] if not v]
-  if missing:
-    raise RuntimeError(f"Missing environment variables: {', '.join(missing)}")
-
   app = Application.builder().token(TELEGRAM_TOKEN).build()
   app.add_handler(CommandHandler("start", start))
-  app.add_handler(CallbackQueryHandler(button_click))
   app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-  print("IQ Option Chart Vision Bot is online...")
+  print("AI Vision Chart Reading Trading Bot is online...")
   app.run_polling()
 
 
