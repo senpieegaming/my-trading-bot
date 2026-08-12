@@ -15,10 +15,8 @@ from telegram.ext import (
     filters,
 )
 
-# 🔒 LIGTAS NA CONFIGURATION (KUKUNIN SA RAILWAY VARIABLES TAB):
-TELEGRAM_TOKEN = os.getenv(
-    "TELEGRAM_TOKEN", "8743360999:AAGoyTpnZNtcOa414MmACkzesVUYkGxELh4"
-)
+# 🔒 LIGTAS NA CONFIGURATION (KUKUNIN LANG SA RAILWAY VARIABLES TAB):
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 ALLOWED_USER_ID = 8434566946
 
@@ -121,7 +119,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         💡 *Rationale:* [Short 1-sentence reason for the trade recommendation]
         """
 
-    # 5. OpenRouter Vision Models to try
+    # 5. OpenRouter Vision Models
     models_to_try = [
         "google/gemini-2.0-flash-001",
         "meta-llama/llama-3.2-11b-vision-instruct",
@@ -178,8 +176,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logging.error(f"OpenRouter Error: {e}")
     await status_msg.edit_text(
         "❌ *Analysis Failed!*\n\n"
-        "Siguraduhing nai-set mo ang `OPENROUTER_API_KEY` sa Railway "
-        "Variables.\n\n"
+        "Siguraduhing nai-set mo ang `TELEGRAM_TOKEN` at `OPENROUTER_API_KEY` sa"
+        " Railway Variables.\n\n"
         f"Details: `{e}`",
         parse_mode="Markdown",
     )
@@ -187,7 +185,9 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
   if not TELEGRAM_TOKEN:
-    print("Error: TELEGRAM_TOKEN is missing!")
+    print(
+        "Error: TELEGRAM_TOKEN is missing! Set it in Railway Variables or code."
+    )
     return
   app = Application.builder().token(TELEGRAM_TOKEN).build()
   app.add_handler(CommandHandler("start", start))
